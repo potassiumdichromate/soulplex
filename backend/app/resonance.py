@@ -280,6 +280,30 @@ def apply_signals(result: dict, a: dict, b: dict) -> dict:
             d["note"] = text
     result["shared"] = list(dict.fromkeys(structured + result["shared"]))[:5]
     result["explore"] = list(dict.fromkeys(result["explore"]))[:4]
+    return apply_personality(result, a, b)
+
+
+def apply_personality(result: dict, a: dict, b: dict) -> dict:
+    """Notes from both people's IPIP answers, only when both opted into the matching scope."""
+    from .personality import pair_notes
+
+    notes = pair_notes(a.get("personality"), b.get("personality"), a["name"], b["name"])
+    if not notes:
+        result["personality"] = {"used": False}
+        return result
+    by = {d["name"]: d for d in result["dimensions"]}
+    comm = by.get("communication")
+    if comm and comm.get("known", True) and notes["nudge"]:
+        comm["score"] = max(5, min(97, comm["score"] + notes["nudge"]))
+    result["shared"] = list(dict.fromkeys(result["shared"] + notes["shared"]))[:6]
+    result["explore"] = list(dict.fromkeys(result["explore"] + notes["explore"]))[:5]
+    result["personality"] = {
+        "used": True,
+        "shared": notes["shared"],
+        "explore": notes["explore"],
+        "nudge": notes["nudge"],
+        "basis": notes["basis"],
+    }
     return result
 
 

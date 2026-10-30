@@ -23,7 +23,7 @@ docker compose down
 
 The database persists in a named volume across restarts. The default port is bound to localhost. The demo is for fictional information only: its named personas, including the operator, deliberately have shared one-click access.
 
-**Start here:** [5-minute demo](docs/INVESTOR_DEMO.md) · [Developer deployment](docs/DEPLOYMENT.md) · [Architecture](docs/ARCHITECTURE.md) · [Release and QA](docs/QA.md) · [15-day execution](docs/ROADMAP.md)
+**Start here:** [5-minute demo](docs/INVESTOR_DEMO.md) · [Developer deployment](docs/DEPLOYMENT.md) · [Architecture](docs/ARCHITECTURE.md) · [Hello Minds + OCEAN](docs/HELLO_MINDS.md) · [Release and QA](docs/QA.md) · [15-day execution](docs/ROADMAP.md)
 
 ## What is implemented
 

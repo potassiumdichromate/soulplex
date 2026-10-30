@@ -42,6 +42,10 @@ envVarGroups:
         value: https://api.openai.com/v1
       - key: MINDS_MIND_TYPE
         value: mastermind
+      - key: MINDS_JUDGE
+        value: "0"
+      - key: MINDS_SSE
+        value: "1"
       - key: MATCH_SCORE_MIN
         value: "70"
       - key: SMTP_PORT

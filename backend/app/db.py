@@ -310,6 +310,86 @@ class DeletionRequest(Base):
     updated: Mapped[float] = mapped_column(Float, default=now)
 
 
+class PersonalityResponse(Base):
+    """One owner answer to one IPIP item: 1 (very inaccurate) to 5 (very accurate)."""
+
+    __tablename__ = "personality_responses"
+    __table_args__ = (UniqueConstraint("user_id", "item_id"),)
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=uid)
+    user_id: Mapped[str] = mapped_column(String, index=True)
+    item_id: Mapped[str] = mapped_column(String)
+    value: Mapped[int] = mapped_column(Integer)
+    elapsed_ms: Mapped[int] = mapped_column(Integer, default=0)
+    answer_version: Mapped[int] = mapped_column(Integer, default=1)
+    answered: Mapped[float] = mapped_column(Float, default=now)
+
+
+class PersonalityProfile(Base):
+    """Scored from the owner's own responses. A model never writes these numbers."""
+
+    __tablename__ = "personality_profiles"
+    user_id: Mapped[str] = mapped_column(String, primary_key=True)
+    instrument: Mapped[str] = mapped_column(String, default="")
+    form: Mapped[str] = mapped_column(String, default="partial")
+    scores: Mapped[dict] = mapped_column(JSON, default=dict)
+    quality: Mapped[dict] = mapped_column(JSON, default=dict)
+    # private: owner only. twin: shapes how the twin speaks. matching: also informs date reflections.
+    scope: Mapped[str] = mapped_column(String, default="twin")
+    version: Mapped[int] = mapped_column(Integer, default=0)
+    computed: Mapped[float] = mapped_column(Float, default=now)
+
+
+class TwinCalibration(Base):
+    """Blinded run: the twin predicts held-out items. Owner answers never enter the prompt."""
+
+    __tablename__ = "twin_calibrations"
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=uid)
+    user_id: Mapped[str] = mapped_column(String, index=True)
+    status: Mapped[str] = mapped_column(String, default="running")
+    method: Mapped[str] = mapped_column(String, default="")
+    held_out: Mapped[list] = mapped_column(JSON, default=list)
+    predictions: Mapped[dict] = mapped_column(JSON, default=dict)
+    metrics: Mapped[dict] = mapped_column(JSON, default=dict)
+    profile_version: Mapped[int] = mapped_column(Integer, default=0)
+    memory_version: Mapped[int] = mapped_column(Integer, default=0)
+    prompt_hash: Mapped[str] = mapped_column(String, default="")
+    error: Mapped[str] = mapped_column(Text, default="")
+    created: Mapped[float] = mapped_column(Float, default=now)
+
+
+class MindLink(Base):
+    """What this server last told a person's Hello Mind. One row per person with a Mind."""
+
+    __tablename__ = "mind_links"
+    user_id: Mapped[str] = mapped_column(String, primary_key=True)
+    persona_hash: Mapped[str] = mapped_column(String, default="")
+    persona_version: Mapped[int] = mapped_column(Integer, default=0)
+    synced: Mapped[float] = mapped_column(Float, default=0)
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    last_error: Mapped[str] = mapped_column(Text, default="")
+
+
+class MindTask(Base):
+    """Durable outbox for Hello Minds side effects. The worker retries with backoff."""
+
+    __tablename__ = "mind_tasks"
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=uid)
+    user_id: Mapped[str] = mapped_column(String, index=True)
+    kind: Mapped[str] = mapped_column(String)
+    payload: Mapped[dict] = mapped_column(JSON, default=dict)
+    status: Mapped[str] = mapped_column(String, default="pending", index=True)
+    attempts: Mapped[int] = mapped_column(Integer, default=0)
+    next_at: Mapped[float] = mapped_column(Float, default=now, index=True)
+    last_error: Mapped[str] = mapped_column(Text, default="")
+    # Set while pending so repeated requests coalesce. Cleared when the task finishes.
+    dedupe_key: Mapped[str | None] = mapped_column(String(120), unique=True, nullable=True)
+    created: Mapped[float] = mapped_column(Float, default=now)
+    updated: Mapped[float] = mapped_column(Float, default=now)
+
+
+SCHEMA = 9
+
+
 class SchemaVersion(Base):
     __tablename__ = "schema_version"
     version: Mapped[int] = mapped_column(Integer, primary_key=True)
@@ -321,9 +401,12 @@ def init_db():
     with engine.begin() as conn:
         if not inspect(conn).has_table("schema_version"):
             Base.metadata.create_all(conn)
-            conn.execute(SchemaVersion.__table__.insert().values(version=8))
+            conn.execute(SchemaVersion.__table__.insert().values(version=SCHEMA))
             return
         version = conn.scalar(select(SchemaVersion.version))
+        if version == 1:
+            _upgrade_v1(conn)
+            version = 2
         if version == 2:
             _add_face_column(conn)
             version = 3
@@ -341,64 +424,63 @@ def init_db():
             version = 7
         if version == 7:
             _add_studio_columns(conn)
-            return
-        if version == 1:
-            if conn.dialect.name == "postgresql":
-                conn.execute(
-                    text(
-                        "ALTER TABLE users ADD COLUMN email_verified BOOLEAN NOT NULL DEFAULT FALSE"
-                    )
-                )
-            elif conn.dialect.name == "sqlite":
-                conn.execute(
-                    text(
-                        "ALTER TABLE users ADD COLUMN email_verified BOOLEAN NOT NULL DEFAULT 0"
-                    )
-                )
-            else:
-                raise RuntimeError("Unsupported database for the v1 to v2 migration.")
-            conn.execute(text("ALTER TABLE scenes ADD COLUMN dedupe_key VARCHAR(64)"))
-            conn.execute(
-                text("CREATE UNIQUE INDEX ix_scenes_dedupe_key ON scenes (dedupe_key)")
-            )
-            Base.metadata.create_all(conn)
-            # Older active scenes must also take part in the uniqueness guard.
-            from .domain import scene_key
+            version = 8
+        if version == 8:
+            _add_personality_tables(conn)
+            version = 9
+        if version != SCHEMA:
+            raise RuntimeError(f"Unsupported schema version {version!r}; expected {SCHEMA}.")
 
-            rows = conn.execute(
-                select(
-                    Scene.id,
-                    Scene.a,
-                    Scene.b,
-                    Scene.venue,
-                    Scene.a_version,
-                    Scene.b_version,
-                    Scene.status,
-                ).order_by(Scene.created.desc())
-            ).all()
-            seen = set()
-            for row in rows:
-                if row.status not in ("queued", "running", "completed"):
-                    continue
-                key = scene_key(row.a, row.b, row.venue, row.a_version, row.b_version)
-                if key not in seen:
-                    conn.execute(
-                        update(Scene).where(Scene.id == row.id).values(dedupe_key=key)
-                    )
-                    seen.add(key)
-            conn.execute(
-                update(SchemaVersion)
-                .where(SchemaVersion.version == 1)
-                .values(version=2)
+
+def _upgrade_v1(conn):
+    if conn.dialect.name == "postgresql":
+        conn.execute(
+            text(
+                "ALTER TABLE users ADD COLUMN email_verified BOOLEAN NOT NULL DEFAULT FALSE"
             )
-            _add_face_column(conn)
-            _add_about_column(conn)
-            _add_invitation_columns(conn)
-            _add_public_dates_column(conn)
-            _add_mind_columns(conn)
-            _add_studio_columns(conn)
-        elif version != 8:
-            raise RuntimeError(f"Unsupported schema version {version!r}; expected 8.")
+        )
+    elif conn.dialect.name == "sqlite":
+        conn.execute(
+            text(
+                "ALTER TABLE users ADD COLUMN email_verified BOOLEAN NOT NULL DEFAULT 0"
+            )
+        )
+    else:
+        raise RuntimeError("Unsupported database for the v1 to v2 migration.")
+    conn.execute(text("ALTER TABLE scenes ADD COLUMN dedupe_key VARCHAR(64)"))
+    conn.execute(
+        text("CREATE UNIQUE INDEX ix_scenes_dedupe_key ON scenes (dedupe_key)")
+    )
+    Base.metadata.create_all(conn)
+    # Older active scenes must also take part in the uniqueness guard.
+    from .domain import scene_key
+
+    rows = conn.execute(
+        select(
+            Scene.id,
+            Scene.a,
+            Scene.b,
+            Scene.venue,
+            Scene.a_version,
+            Scene.b_version,
+            Scene.status,
+        ).order_by(Scene.created.desc())
+    ).all()
+    seen = set()
+    for row in rows:
+        if row.status not in ("queued", "running", "completed"):
+            continue
+        key = scene_key(row.a, row.b, row.venue, row.a_version, row.b_version)
+        if key not in seen:
+            conn.execute(
+                update(Scene).where(Scene.id == row.id).values(dedupe_key=key)
+            )
+            seen.add(key)
+    conn.execute(
+        update(SchemaVersion)
+        .where(SchemaVersion.version == 1)
+        .values(version=2)
+    )
 
 
 def _add_face_column(conn):
@@ -452,3 +534,18 @@ def _add_studio_columns(conn):
     conn.execute(text("ALTER TABLE users ADD COLUMN identity_status VARCHAR NOT NULL DEFAULT 'unverified'"))
     Base.metadata.create_all(conn)
     conn.execute(update(SchemaVersion).values(version=8))
+
+
+def _add_personality_tables(conn):
+    """v8 -> v9: OCEAN self-report, blinded twin calibration, and the Hello Minds outbox."""
+    Base.metadata.create_all(
+        conn,
+        tables=[
+            PersonalityResponse.__table__,
+            PersonalityProfile.__table__,
+            TwinCalibration.__table__,
+            MindLink.__table__,
+            MindTask.__table__,
+        ],
+    )
+    conn.execute(update(SchemaVersion).values(version=9))

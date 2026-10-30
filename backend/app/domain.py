@@ -1,11 +1,12 @@
 import hashlib
 from sqlalchemy import select, or_, and_
 from fastapi import HTTPException
-from .db import User, Memory, Block, Scene, Participation
+from .db import User, Memory, Block, Scene, Participation, PersonalityProfile
 from .faces import view as face_view
 from .about import violates, completion
 from .date_types import spot_for
 from .studio import cities_fit, external_allowed, guidance_text, matching_allowed, why_click
+from .personality import shared_levels, style_hints
 
 
 def scene_key(a, b, venue, a_version, b_version):
@@ -164,6 +165,7 @@ def outside_reasons(a, b):
 
 
 def actor_data(db, u):
+    profile = db.get(PersonalityProfile, u.id)
     return {
         "id": u.id,
         "name": u.name,
@@ -180,6 +182,9 @@ def actor_data(db, u):
         ],
         "mind_id": (u.mind_id or "") if external_allowed(db, u) else "",
         "guidance": [item["content"] for item in guidance_text(db, u.id) if not item["disclose"]],
+        # Tone guidance from the owner's own IPIP answers, and levels only if they opted into matching.
+        "style": style_hints(profile),
+        "personality": shared_levels(profile),
         "intent": u.intent,
         "city": u.city,
         "age_min": u.age_min,
