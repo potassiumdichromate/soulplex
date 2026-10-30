@@ -208,7 +208,7 @@ def test_upgrade_from_v1_preserves_existing_scene(tmp_path, monkeypatch):
     database.init_db()
     database.init_db()  # Safe to run twice after a restart.
     with engine.connect() as conn:
-        assert conn.scalar(select(database.SchemaVersion.version)) == 8
+        assert conn.scalar(select(database.SchemaVersion.version)) == 9
         cols = [c["name"] for c in inspect(conn).get_columns("users")]
         assert "face" in cols and "about" in cols and "auto_accept" in cols and "public_dates" in cols
         assert "mind_id" in cols and "mind_email" in cols and "studio" in cols and "age_verified" in cols

@@ -18,10 +18,11 @@ from .minds import (
     enabled as minds_enabled,
     bind_mind,
     private_reply,
-    teach,
-    link_pair,
     match_line,
 )
+from . import minds as minds_client
+from .mind_sync import enqueue as enqueue_mind, pair_payload, retire as retire_mind
+from .studio import external_allowed
 from .auth_flow import mail_ready, issue_token, consume_token, send_auth_email
 
 
@@ -35,6 +36,10 @@ async def lifespan(app):
         raise RuntimeError(
             "Set AI_MODEL, or MINDS_BUILDER_API_KEY so Minds write the dates."
         )
+    if PRODUCTION and minds_enabled() and not os.getenv(
+        "MINDS_API_BASE", "https://api.build.hellominds.ai"
+    ).startswith("https://"):
+        raise RuntimeError("MINDS_API_BASE must use https in production.")
     if PRODUCTION and not mail_ready():
         raise RuntimeError(
             "Production requires SMTP_HOST and SMTP_FROM for email verification and recovery."
@@ -48,6 +53,7 @@ async def lifespan(app):
         )
     init_db()
     yield
+    await minds_client.aclose()
 
 
 app = FastAPI(
@@ -262,6 +268,7 @@ def health(db: Session = Depends(get_db)):
         "version": "0.5.0",
         "mode": "live",
         "minds": minds_enabled(),
+        "minds_circuit": minds_client.snapshot()["circuit"]["state"] if minds_enabled() else None,
         "match_line": match_line(),
         "venues": VENUES,
     }
@@ -394,9 +401,13 @@ async def _attach_mind(db, user):
         logging.warning("Could not awaken a Mind during sign-in")
 
 
-def _queue_teach(background: BackgroundTasks, user, text: str):
-    if minds_enabled() and user and user.mind_id and text.strip():
-        background.add_task(teach, user.mind_id, user.id, text)
+def _queue_sync(user):
+    """Approved facts changed. The outbox re-sends the whole persona, so withdrawals reach the Mind too."""
+    if not minds_enabled() or not user or not user.mind_id:
+        return
+    with SessionLocal() as db:
+        enqueue_mind(db, user.id, "sync_persona")
+        db.commit()
 
 
 @app.get("/api/me")
@@ -444,11 +455,7 @@ def profile(
     db.refresh(u)
     log(db, u, "profile_and_discovery_updated")
     db.commit()
-    _queue_teach(
-        background,
-        u,
-        f"Updated requirements: looking for a {u.intent} in {u.city}, ages {u.age_min} to {u.age_max}.",
-    )
+    _queue_sync(u)
     return own_profile(u)
 
 
@@ -494,11 +501,7 @@ async def set_about(
     db.commit()
     db.refresh(u)
     if learned:
-        _queue_teach(
-            background,
-            u,
-            "Approved profile facts. Use only these on dates:\n" + "\n".join(learned),
-        )
+        _queue_sync(u)
     return own_profile(u)
 
 
@@ -561,7 +564,11 @@ async def chat(body: Chat, request: Request, db: Session = Depends(get_db)):
     quota(db, "chat:" + u.id, 40)
     db.commit()
     u = me(request, db, True)
-    if minds_enabled():
+    # The Mind speaks only for people who allowed the external provider.
+    use_mind = bool(minds_enabled() and u.mind_id and external_allowed(db, u))
+    # Without a model, the interview keeps exact quotes and needs no inference.
+    quote_only = use_mind or (minds_enabled() and not os.getenv("AI_MODEL"))
+    if quote_only:
         await moderate(body.message)
     history = db.scalars(
         select(Message).where(Message.user_id == u.id).order_by(Message.created)
@@ -572,14 +579,19 @@ async def chat(body: Chat, request: Request, db: Session = Depends(get_db)):
         [{"role": m.role, "content": m.content} for m in history],
         [m.content for m in memories(db, u.id)[:16]],
         idx,
+        mind=quote_only,
     )
-    if minds_enabled() and u.mind_id:
+    if use_mind:
+        from .db import PersonalityProfile
+        from .personality import style_hints
+
         approved = [
             {"category": m.category, "content": m.content}
             for m in memories(db, u.id, True)[:16]
         ]
+        style = style_hints(db.get(PersonalityProfile, u.id))
         try:
-            spoken = await private_reply(u, body.message, approved)
+            spoken = await private_reply(u, body.message, approved, style)
         except ProviderError as exc:
             raise HTTPException(503, str(exc))
         if spoken:
@@ -667,12 +679,7 @@ async def edit_memory(
     m = db.get(Memory, mid)
     log(db, u, "memory_" + body.status, mid)
     db.commit()
-    if body.status == "approved" and body.visibility == "shareable":
-        _queue_teach(
-            background,
-            u,
-            f"Approved shareable fact ({m.category}): {m.content}. Use this on dates. Do not invent beyond approved facts.",
-        )
+    _queue_sync(u)
     return fact_data(m)
 
 
@@ -712,12 +719,7 @@ async def add_trait(
     )
     log(db, u, "trait_added")
     db.commit()
-    if body.visibility == "shareable":
-        _queue_teach(
-            background,
-            u,
-            f"Approved shareable fact ({body.category}): {body.content.strip()}. Use this on dates. Do not invent beyond approved facts.",
-        )
+    _queue_sync(u)
     return fact_data(m)
 
 
@@ -735,6 +737,7 @@ def delete_memory(mid: str, request: Request, db: Session = Depends(get_db)):
     )
     log(db, u, "memory_deleted", mid)
     db.commit()
+    _queue_sync(u)
     return {"ok": True}
 
 
@@ -1244,12 +1247,11 @@ async def participate(
     part.decision = body.decision
     part.next_step = body.next_step
     log(db, u, "human_" + body.decision, sid)
-    minds = (a.mind_id, a.mind_email, b.mind_id, b.mind_email)
     parts = db.scalars(select(Participation).where(Participation.scene_id == sid)).all()
     opened = all(p.reviewed and p.contribution and p.decision == "accept" for p in parts)
+    if opened and a.mind_id and b.mind_id and external_allowed(db, a) and external_allowed(db, b):
+        enqueue_mind(db, a.id, "link_pair", pair_payload(a, b), coalesce=False)
     db.commit()
-    if opened:
-        background.add_task(link_pair, *minds)
     return scene_data(db, s, u)
 
 
@@ -1420,6 +1422,9 @@ def block(target: str, request: Request, db: Session = Depends(get_db)):
     if target == u.id or not db.get(User, target):
         raise HTTPException(404)
     db.add(Block(owner=u.id, target=target))
+    other = db.get(User, target)
+    if u.mind_id and other.mind_id:
+        enqueue_mind(db, u.id, "unlink_pair", pair_payload(u, other), coalesce=False)
     log(db, u, "blocked", target)
     db.commit()
     return {"ok": True}
@@ -1461,6 +1466,34 @@ def export(request: Request, db: Session = Depends(get_db)):
                 select(Participation).where(Participation.user_id == u.id)
             )
         ],
+        **_personality_export(db, u),
+    }
+
+
+def _personality_export(db, u):
+    from .db import PersonalityProfile, PersonalityResponse, TwinCalibration
+
+    profile = db.get(PersonalityProfile, u.id)
+    return {
+        "personality": {
+            "responses": [
+                {"item_id": r.item_id, "value": r.value, "answered": r.answered}
+                for r in db.scalars(select(PersonalityResponse).where(PersonalityResponse.user_id == u.id))
+            ],
+            "profile": {
+                "form": profile.form,
+                "scores": profile.scores,
+                "quality": profile.quality,
+                "scope": profile.scope,
+            }
+            if profile
+            else None,
+            "calibrations": [
+                {"created": r.created, "method": r.method, "status": r.status, "metrics": r.metrics}
+                for r in db.scalars(select(TwinCalibration).where(TwinCalibration.user_id == u.id))
+            ],
+        },
+        "hello_minds": {"mind_id": u.mind_id, "mind_email": u.mind_email} if u.mind_id else None,
     }
 
 
@@ -1479,6 +1512,7 @@ def delete_account(
         )
     if not check_password(body.password, u.password):
         raise HTTPException(401, "Password is incorrect.")
+    retire_mind(db, u)
     ids = list(
         db.scalars(select(Scene.id).where(or_(Scene.a == u.id, Scene.b == u.id)))
     )
@@ -1486,7 +1520,12 @@ def delete_account(
     db.execute(delete(Scene).where(Scene.id.in_(ids)))
     from .db import CalibrationRun, ConsentRecord, DeletionRequest, StudioAnswer
 
-    for cls in (Message, Memory, AuthSession, AuthToken, Event, StudioAnswer, ConsentRecord, CalibrationRun):
+    from .db import MindLink, PersonalityProfile, PersonalityResponse, TwinCalibration
+
+    for cls in (
+        Message, Memory, AuthSession, AuthToken, Event, StudioAnswer, ConsentRecord, CalibrationRun,
+        PersonalityResponse, PersonalityProfile, TwinCalibration, MindLink,
+    ):
         db.execute(delete(cls).where(cls.user_id == u.id))
     db.execute(delete(DeletionRequest).where(DeletionRequest.user_id == u.id))
     db.execute(delete(Block).where(or_(Block.owner == u.id, Block.target == u.id)))
@@ -1607,8 +1646,12 @@ def resolve(rid: str, request: Request, db: Session = Depends(get_db)):
 
 
 from .studio_api import router as studio_router
+from .personality_api import router as personality_router
+from .minds_api import router as minds_router
 
 app.include_router(studio_router)
+app.include_router(personality_router)
+app.include_router(minds_router)
 
 static = Path(os.getenv("STATIC_DIR", "../frontend/dist"))
 if static.exists():

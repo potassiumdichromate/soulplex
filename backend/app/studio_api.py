@@ -30,6 +30,7 @@ from .studio import (
     cancel_queued,
     consents_for,
     decision_context,
+    external_allowed,
     fidelity,
     granted,
     guidance_text,
@@ -90,6 +91,20 @@ class ReviewIn(BaseModel):
 class RepresentIn(BaseModel):
     rating: str
     note: str = ""
+
+
+def _external_changed(db, user, allowed):
+    """Turning the external provider on wakes or re-enables the Mind; turning it off disables it."""
+    from .mind_sync import enqueue
+
+    if allowed:
+        if user.mind_id:
+            enqueue(db, user.id, "set_enabled", {"enabled": True})
+            enqueue(db, user.id, "sync_persona")
+        else:
+            enqueue(db, user.id, "awaken")
+    elif user.mind_id:
+        enqueue(db, user.id, "set_enabled", {"enabled": False})
 
 
 def _me(request, db, mutate=False):
@@ -450,6 +465,8 @@ def put_permissions(body: ConsentIn, request: Request, db: Session = Depends(get
         row.updated = now()
     if body.grants.get("allow_virtual_interactions") is False:
         user.auto_accept = False
+    if "allow_external_minds" in body.grants:
+        _external_changed(db, user, bool(body.grants["allow_external_minds"]))
     studio = dict(user.studio or {})
     studio["step"] = "permissions"
     user.studio = studio
@@ -467,6 +484,7 @@ def revoke(request: Request, db: Session = Depends(get_db)):
             row.updated = now()
     user.auto_accept = False
     user.discovery = False
+    _external_changed(db, user, False)
     stopped = cancel_queued(db, user.id)
     user.memory_version += 1
     log(db, user, "consent_revoked")
@@ -496,13 +514,15 @@ def authorize(request: Request, db: Session = Depends(get_db)):
     runs = db.scalars(select(CalibrationRun).where(CalibrationRun.user_id == user.id)).all()
     reviewed = [r for r in runs if r.scenario_id in ("CAL02", "CAL01", "CAL03") and r.rating and r.twin_method == "model"]
     mode = "ready" if not missing and len(reviewed) >= 3 else "private_only" if not missing else "local_only"
-    if not granted(db, user, "allow_external_minds"):
+    if not external_allowed(db, user):
         mode = "local_only" if mode == "ready" else mode
     studio = dict(user.studio or {})
     studio["readiness"] = mode
     user.studio = studio
     db.commit()
-    return {"readiness": mode, "missing": missing, "fidelity": fidelity(runs)}
+    from .personality_api import readiness
+
+    return {"readiness": mode, "missing": missing, "fidelity": fidelity(runs), "personality": readiness(db, user)}
 
 
 @router.post("/trust/identity")

@@ -509,7 +509,8 @@ def matching_allowed(db, user):
 
 
 def external_allowed(db, user):
-    return granted(db, user, "allow_external_minds")
+    """An external processor needs an explicit yes. Having no consent rows is not a yes."""
+    return any(row.purpose == "allow_external_minds" and row.granted for row in consents_for(db, user.id))
 
 
 def answers_for(db, user_id):

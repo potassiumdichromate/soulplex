@@ -19,7 +19,7 @@ async def moderate(text):
     return None
 
 
-async def interview(text, history, memory, index):
+async def interview(text, history, memory, index, mind=None):
     category, _question = QUESTIONS[min(index, len(QUESTIONS) - 1)]
     nxt = (
         QUESTIONS[index + 1][1]
