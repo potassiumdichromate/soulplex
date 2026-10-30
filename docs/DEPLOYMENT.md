@@ -17,7 +17,7 @@ Use a separate domain and an empty live database. Keep secrets out of Git. **The
 | `APP_ENV` | `production` | Set by `compose.production.yaml` and the Render env group. Enables secure cookies and startup checks. |
 | `APP_ORIGIN` | Exact HTTPS origin, e.g. `https://soulplex.example.com`, no path | Your domain |
 | `DATABASE_URL` | `postgresql+psycopg://...` with required TLS settings for a managed DB | Render sets it; compose builds it from `POSTGRES_PASSWORD` |
-| `AI_API_KEY` | Backend-only OpenAI key. Always required: every message goes through safety screening | platform.openai.com |
+| `AI_API_KEY` | Backend-only model key (OpenAI `sk-…`, or a 0G Router `sk-…` key, see below). Always required: every message goes through safety screening | platform.openai.com, or pc.0g.ai → Dashboard → API Keys |
 | `SMTP_HOST`, `SMTP_FROM` | Real outbound SMTP host and a verified sender on your delivery domain | Postmark, SendGrid, SES, Resend… |
 | `SMTP_USERNAME`, `SMTP_PASSWORD` | SMTP login when the provider requires it | Same provider |
 | `SMTP_PORT` | Usually `587` (TLS upgrade) | Same provider |
@@ -35,6 +35,30 @@ Use a separate domain and an empty live database. Keep secrets out of Git. **The
 |---|---|
 | `AI_MODEL` | An OpenAI model that supports Structured Outputs (strict JSON schema on Chat Completions). Even with Hello Minds on, it is the fallback when a Mind runs out of Cognition, it serves members who have not allowed Hello Minds, and it runs their calibration. Without it, their dates fail. |
 | `AI_BASE_URL` | Default `https://api.openai.com/v1`. Alternate endpoints must be explicitly tested. |
+
+### Using 0G (pc.0g.ai) instead of OpenAI
+
+The 0G Router is OpenAI-compatible, so one switch moves chat, dates, reflections, calibration, moderation and transcription onto your 0G credits:
+
+| Variable | Value |
+|---|---|
+| `AI_PROVIDER` | `0g` |
+| `AI_API_KEY` | Your 0G inference key (`sk-…`, created at pc.0g.ai → Dashboard → API Keys). Not the `mk-` management key. |
+| `AI_MODEL` | A chat model id from `GET https://router-api.0g.ai/v1/models` that supports structured output / JSON mode. |
+| `TRANSCRIBE_MODEL` | Optional, e.g. `openai/whisper-large-v3` (confirm the id in `/v1/models`). |
+| `AI_0G_TRUST_MODE` | Default `private` (TEE, end-to-end encrypted, zero data retention). Use `verified` if your model is not offered privately; `standard` allows community hosts and is not recommended for dating data. |
+| `MODERATION_LLM_MODEL` | Optional cheaper/faster model for safety checks. Defaults to `AI_MODEL`. |
+| `AI_MAX_TOKENS` | Default `2000`. Raise for thinking models, which spend tokens on reasoning first. |
+| `AI_JSON_MODE` | Leave empty. The app tries strict JSON schema and, if the Router refuses it, switches to JSON mode plus server-side validation by itself. Set `object` to skip the first attempt. |
+
+What changes with 0G:
+
+- **Base URL.** `https://router-api.0g.ai/v1` is used automatically. An OpenAI `AI_BASE_URL` left in the Render env group is ignored, so 0G keys are never sent to OpenAI.
+- **Moderation.** 0G has no moderation endpoint, so safety screening asks your model to classify each message and still fails closed. A dedicated moderation model is stronger: if you also have an OpenAI key, set `MODERATION_API_KEY` to it and screening goes back to OpenAI's free moderation endpoint while everything else stays on 0G.
+- **Cost.** Every screened message is one extra model call, and a date is 8 lines plus a reflection. Use a small model for `MODERATION_LLM_MODEL`.
+- **Errors.** An empty 0G balance shows "The AI provider balance is empty". Rate limits (429) are retried using `Retry-After`.
+
+Test with your chosen model before going live: send a chat message, run one date and one calibration, and confirm no "model request failed" errors appear in the logs.
 
 ### Optional
 
