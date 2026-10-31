@@ -2,9 +2,9 @@ import os, time, re, json, hashlib, secrets, logging
 from pathlib import Path
 from contextlib import asynccontextmanager
 from typing import Literal
-from fastapi import FastAPI, HTTPException, Request, Response, Depends
-from fastapi.responses import JSONResponse, FileResponse
+from fastapi import FastAPI, HTTPException, Request, Response, Depends, BackgroundTasks
 from fastapi.middleware.gzip import GZipMiddleware
+from fastapi.responses import JSONResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field, ConfigDict
 from sqlalchemy import select, delete, or_, func, update
@@ -14,6 +14,14 @@ from .db import *
 from .security import *
 from .domain import *
 from .ai import interview, moderate, contains_contact, QUESTIONS, VENUES, ProviderError
+from .minds import (
+    enabled as minds_enabled,
+    bind_mind,
+    private_reply,
+    teach,
+    link_pair,
+    match_line,
+)
 from .auth_flow import mail_ready, issue_token, consume_token, send_auth_email
 
 
@@ -23,8 +31,12 @@ async def lifespan(app):
         raise RuntimeError(
             "Production requires HTTPS APP_ORIGIN and DEMO_MODE=false. Use development only for local or synthetic demos."
         )
-    if not DEMO and (not os.getenv("AI_API_KEY") or not os.getenv("AI_MODEL")):
-        raise RuntimeError("Live mode requires AI_API_KEY and AI_MODEL.")
+    if not DEMO and not os.getenv("AI_API_KEY"):
+        raise RuntimeError("Live mode requires AI_API_KEY for safety screening.")
+    if not DEMO and not os.getenv("AI_MODEL") and not minds_enabled():
+        raise RuntimeError(
+            "Live mode requires AI_MODEL, or MINDS_BUILDER_API_KEY so Minds write the dates."
+        )
     if PRODUCTION and not mail_ready():
         raise RuntimeError(
             "Production requires SMTP_HOST and SMTP_FROM for email verification and recovery."
@@ -152,6 +164,10 @@ class Chat(Strict):
     message: str = Field(min_length=2, max_length=2000)
 
 
+class DirectText(Strict):
+    text: str = Field(min_length=1, max_length=2000)
+
+
 class MemoryEdit(Strict):
     content: str = Field(min_length=1, max_length=600)
     visibility: Literal["private", "shareable"]
@@ -253,12 +269,14 @@ def health(db: Session = Depends(get_db)):
         "ok": True,
         "version": "0.5.0",
         "mode": "demo" if DEMO else "live",
+        "minds": minds_enabled(),
+        "match_line": match_line(),
         "venues": VENUES,
     }
 
 
 @app.post("/api/auth/register")
-def register(
+async def register(
     body: Register, request: Request, response: Response, db: Session = Depends(get_db)
 ):
     auth_limit(request, db, body.email)
@@ -288,6 +306,12 @@ def register(
         db.flush()
     except IntegrityError:
         raise HTTPException(409, "This account cannot be registered. Try signing in.")
+    if minds_enabled():
+        try:
+            await bind_mind(db, u)
+        except ProviderError as exc:
+            db.rollback()
+            raise HTTPException(503, str(exc))
     if not DEMO:
         claimed = db.execute(
             update(Invite)
@@ -310,7 +334,7 @@ def register(
 
 
 @app.post("/api/auth/login")
-def login(
+async def login(
     body: Login, request: Request, response: Response, db: Session = Depends(get_db)
 ):
     auth_limit(request, db, body.email)
@@ -320,6 +344,7 @@ def login(
         raise HTTPException(401, "Email or password is incorrect.")
     if not u.password.startswith("scrypt$65536$"):
         u.password = hash_password(body.password)
+    await _attach_mind(db, u)
     csrf = new_session(db, u, response)
     db.commit()
     return {"user": own_profile(u), "csrf": csrf, "mode": "demo" if DEMO else "live"}
@@ -382,7 +407,7 @@ def reset_password(
 
 
 @app.post("/api/auth/demo/{persona}")
-def demo_login(
+async def demo_login(
     persona: str, request: Request, response: Response, db: Session = Depends(get_db)
 ):
     if not DEMO:
@@ -391,9 +416,25 @@ def demo_login(
         raise HTTPException(404)
     auth_limit(request, db)
     u = db.scalar(select(User).where(User.email == persona + "@demo.soulplex.local"))
+    await _attach_mind(db, u)
     csrf = new_session(db, u, response)
     db.commit()
     return {"user": own_profile(u), "csrf": csrf, "mode": "demo"}
+
+
+async def _attach_mind(db, user):
+    """Give an existing account a Mind. Sign-in still succeeds if Hello Minds is down."""
+    if not minds_enabled() or not user or user.mind_id:
+        return
+    try:
+        await bind_mind(db, user)
+    except ProviderError:
+        logging.warning("Could not awaken a Mind during sign-in")
+
+
+def _queue_teach(background: BackgroundTasks, user, text: str):
+    if minds_enabled() and user and user.mind_id and text.strip():
+        background.add_task(teach, user.mind_id, user.id, text)
 
 
 @app.get("/api/me")
@@ -412,7 +453,12 @@ def logout(request: Request, response: Response, db: Session = Depends(get_db)):
 
 
 @app.put("/api/profile")
-def profile(body: Profile, request: Request, db: Session = Depends(get_db)):
+def profile(
+    body: Profile,
+    request: Request,
+    background: BackgroundTasks,
+    db: Session = Depends(get_db),
+):
     u = me(request, db, True)
     validate_profile(body)
     if body.discovery and (not u.verified or (not DEMO and not u.email_verified)):
@@ -429,11 +475,18 @@ def profile(body: Profile, request: Request, db: Session = Depends(get_db)):
     db.refresh(u)
     log(db, u, "profile_and_discovery_updated")
     db.commit()
+    _queue_teach(
+        background,
+        u,
+        f"Updated requirements: looking for a {u.intent} in {u.city}, ages {u.age_min} to {u.age_max}.",
+    )
     return own_profile(u)
 
 
 @app.put("/api/about")
-async def set_about(request: Request, db: Session = Depends(get_db)):
+async def set_about(
+    request: Request, background: BackgroundTasks, db: Session = Depends(get_db)
+):
     """Save the About-me profile and regenerate the agent traits it implies."""
     from .about import clean, facts
 
@@ -452,7 +505,9 @@ async def set_about(request: Request, db: Session = Depends(get_db)):
     db.rollback()
     u = me(request, db, True)
     db.execute(delete(Memory).where(Memory.user_id == u.id, Memory.source_id.like("about:%")))
+    learned = []
     for key, category, sentence in facts(about):
+        learned.append(f"({category}) {sentence}")
         db.add(
             Memory(
                 user_id=u.id,
@@ -469,6 +524,12 @@ async def set_about(request: Request, db: Session = Depends(get_db)):
     log(db, u, "about_updated")
     db.commit()
     db.refresh(u)
+    if learned:
+        _queue_teach(
+            background,
+            u,
+            "Approved profile facts. Use only these on dates:\n" + "\n".join(learned),
+        )
     return own_profile(u)
 
 
@@ -508,7 +569,13 @@ def chat_history(request: Request, db: Session = Depends(get_db)):
     ).all()
     return {
         "messages": [{"id": m.id, "role": m.role, "content": m.content} for m in rows],
-        "opening": QUESTIONS[0][1],
+        "opening": (
+            "I'm your agent. I'll only take something on a date after you approve it. "
+            if u.mind_id
+            else ""
+        )
+        + QUESTIONS[0][1],
+        "mind": bool(u.mind_id),
     }
 
 
@@ -517,8 +584,16 @@ async def chat(body: Chat, request: Request, db: Session = Depends(get_db)):
     u = me(request, db, True)
     if not DEMO and not u.email_verified:
         raise HTTPException(403, "Verify your email before using the AI guide.")
+    if minds_enabled():
+        try:
+            await bind_mind(db, u)
+        except ProviderError as exc:
+            raise HTTPException(503, str(exc))
     quota(db, "chat:" + u.id, 40)
     db.commit()
+    u = me(request, db, True)
+    if minds_enabled() and not DEMO:
+        await moderate(body.message)
     history = db.scalars(
         select(Message).where(Message.user_id == u.id).order_by(Message.created)
     ).all()
@@ -529,6 +604,21 @@ async def chat(body: Chat, request: Request, db: Session = Depends(get_db)):
         [m.content for m in memories(db, u.id)[:16]],
         idx,
     )
+    if minds_enabled() and u.mind_id:
+        approved = [
+            {"category": m.category, "content": m.content}
+            for m in memories(db, u.id, True)[:16]
+        ]
+        try:
+            spoken = await private_reply(u, body.message, approved)
+        except ProviderError as exc:
+            raise HTTPException(503, str(exc))
+        if spoken:
+            if not DEMO:
+                await moderate(spoken)
+            result.reply = spoken
+        else:
+            result.reply += " Your agent is still thinking. Ask again in a moment."
     db.rollback()
     u = me(request, db, True)
     source = Message(user_id=u.id, role="user", content=body.message)
@@ -563,7 +653,11 @@ def list_memories(request: Request, db: Session = Depends(get_db)):
 
 @app.patch("/api/memories/{mid}")
 async def edit_memory(
-    mid: str, body: MemoryEdit, request: Request, db: Session = Depends(get_db)
+    mid: str,
+    body: MemoryEdit,
+    request: Request,
+    background: BackgroundTasks,
+    db: Session = Depends(get_db),
 ):
     u = me(request, db, True)
     m = db.get(Memory, mid)
@@ -605,11 +699,22 @@ async def edit_memory(
     m = db.get(Memory, mid)
     log(db, u, "memory_" + body.status, mid)
     db.commit()
+    if body.status == "approved" and body.visibility == "shareable":
+        _queue_teach(
+            background,
+            u,
+            f"Approved shareable fact ({m.category}): {m.content}. Use this on dates. Do not invent beyond approved facts.",
+        )
     return fact_data(m)
 
 
 @app.post("/api/memories")
-async def add_trait(body: NewTrait, request: Request, db: Session = Depends(get_db)):
+async def add_trait(
+    body: NewTrait,
+    request: Request,
+    background: BackgroundTasks,
+    db: Session = Depends(get_db),
+):
     """The owner writes a behaviour trait directly. Owner-authored, so it is approved."""
     u = me(request, db, True)
     quota(db, "trait:" + u.id, 60)
@@ -639,6 +744,12 @@ async def add_trait(body: NewTrait, request: Request, db: Session = Depends(get_
     )
     log(db, u, "trait_added")
     db.commit()
+    if body.visibility == "shareable":
+        _queue_teach(
+            background,
+            u,
+            f"Approved shareable fact ({body.category}): {body.content.strip()}. Use this on dates. Do not invent beyond approved facts.",
+        )
     return fact_data(m)
 
 
@@ -1145,12 +1256,25 @@ def scene(sid: str, request: Request, db: Session = Depends(get_db)):
 
 @app.put("/api/scenes/{sid}/participation")
 async def participate(
-    sid: str, body: Participate, request: Request, db: Session = Depends(get_db)
+    sid: str,
+    body: Participate,
+    request: Request,
+    background: BackgroundTasks,
+    db: Session = Depends(get_db),
 ):
     u = me(request, db, True)
     s, a, b = get_scene(db, sid, u)
     if s.status != "completed" or stale(s, a, b):
         raise HTTPException(409, "Review a current, completed experience first.")
+    if body.decision == "accept":
+        score = ((s.output or {}).get("assessment") or {}).get("score")
+        line = match_line()
+        if not isinstance(score, (int, float)) or isinstance(score, bool) or score < line:
+            shown = int(score) if isinstance(score, (int, float)) and not isinstance(score, bool) else "unavailable"
+            raise HTTPException(
+                422,
+                f"A connection opens at {line}% or above. This date scored {shown}.",
+            )
     if body.decision == "accept" and (
         not body.reviewed or len(body.contribution.strip()) < 5 or not u.contact
     ):
@@ -1179,8 +1303,57 @@ async def participate(
     part.decision = body.decision
     part.next_step = body.next_step
     log(db, u, "human_" + body.decision, sid)
+    minds = (a.mind_id, a.mind_email, b.mind_id, b.mind_email)
+    parts = db.scalars(select(Participation).where(Participation.scene_id == sid)).all()
+    opened = all(p.reviewed and p.contribution and p.decision == "accept" for p in parts)
     db.commit()
+    if opened:
+        background.add_task(link_pair, *minds)
     return scene_data(db, s, u)
+
+
+def _direct_rows(db, sid, user_id):
+    rows = db.scalars(
+        select(DirectMessage)
+        .where(DirectMessage.scene_id == sid)
+        .order_by(DirectMessage.created)
+    ).all()
+    return [
+        {"id": m.id, "mine": m.sender_id == user_id, "text": m.content, "created": m.created}
+        for m in rows
+    ]
+
+
+@app.get("/api/scenes/{sid}/messages")
+def direct_history(sid: str, request: Request, db: Session = Depends(get_db)):
+    u = me(request, db)
+    s, a, b = get_scene(db, sid, u)
+    if not scene_data(db, s, u)["mutual"]:
+        raise HTTPException(409, "You can talk after you both accept.")
+    return _direct_rows(db, sid, u.id)
+
+
+@app.post("/api/scenes/{sid}/messages")
+async def direct_send(
+    sid: str, body: DirectText, request: Request, db: Session = Depends(get_db)
+):
+    u = me(request, db, True)
+    s, a, b = get_scene(db, sid, u)
+    if not scene_data(db, s, u)["mutual"]:
+        raise HTTPException(409, "You can talk after you both accept.")
+    quota(db, "dm:" + u.id, 80)
+    db.commit()
+    await moderate(body.text)
+    db.rollback()
+    u = me(request, db, True)
+    s, a, b = get_scene(db, sid, u)
+    if not scene_data(db, s, u)["mutual"]:
+        raise HTTPException(409, "You can talk after you both accept.")
+    message = DirectMessage(scene_id=sid, sender_id=u.id, content=body.text.strip())
+    db.add(message)
+    log(db, u, "direct_message", sid)
+    db.commit()
+    return {"id": message.id, "mine": True, "text": message.content, "created": message.created}
 
 
 @app.post("/api/scenes/{sid}/feedback")
