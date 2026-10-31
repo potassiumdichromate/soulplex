@@ -119,6 +119,10 @@ def seed():
                 ("lifestyle", "Weekends with friends, Sunday mornings slow."),
             ]),
         ]
+        CAST_FACES = {
+            "maya": "creamsuit", "sara": "pinkbomber", "leila": "lavender", "zara": "sheerlilac",
+            "arjun": "midnight", "karan": "lilachoodie", "omar": "tealvarsity", "vikram": "blackbomber",
+        }
         faces = {
             "maya": dict(skin=2, hair=1, hairColor=1, eyes=1, brows=0, mouth=0, facial=0, accessory=3, outfit=0),
             "arjun": dict(skin=3, hair=0, hairColor=0, eyes=0, brows=1, mouth=1, facial=1, accessory=0, outfit=3),
@@ -166,7 +170,7 @@ def seed():
                 role="admin" if key == "operator" else "member",
                 auto_accept=True,
                 memory_version=1,
-                face={"kind": "illustrated", "spec": faces.get(key, {})},
+                face={"kind": "cast", "id": CAST_FACES[key]} if key in CAST_FACES else {"kind": "illustrated", "spec": faces.get(key, {})},
                 about=ABOUT.get(key, {}),
             )
             db.add(u)
