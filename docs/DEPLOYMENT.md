@@ -33,8 +33,8 @@ Use a separate domain and an empty live database. Keep secrets out of Git. **The
 
 | Variable | Why |
 |---|---|
-| `AI_MODEL` | An OpenAI model that supports Structured Outputs (strict JSON schema on Chat Completions). Even with Hello Minds on, it is the fallback when a Mind runs out of Cognition, it serves members who have not allowed Hello Minds, and it runs their calibration. Without it, their dates fail. |
-| `AI_BASE_URL` | Default `https://api.openai.com/v1`. Alternate endpoints must be explicitly tested. |
+| `AI_MODEL` | A model that returns strict JSON: an OpenAI model with Structured Outputs, or a 0G Router model with JSON mode. Even with Hello Minds on, it is the fallback when a Mind runs out of Cognition, it serves members who have not allowed Hello Minds, and it runs their calibration. Without it, their dates fail. |
+| `AI_BASE_URL` | Default `https://api.openai.com/v1`, or `https://router-api.0g.ai/v1` when `AI_PROVIDER=0g`. Leave it empty unless you use another endpoint, which must be explicitly tested. |
 
 ### Using 0G (pc.0g.ai) instead of OpenAI
 
@@ -76,7 +76,8 @@ Test with your chosen model before going live: send a chat message, run one date
 | `MATCH_SCORE_MIN` | `70` | Score line for offering a connection. |
 | `TRANSCRIBE_MODEL` | empty | Turns on voice answers. Blank keeps typed chat working. |
 | `MODERATION_URL` / `MODERATION_MODEL` | OpenAI moderation | Errors fail closed. |
-| `MODERATION_API_KEY` | reuses `AI_API_KEY` | Set only if `AI_BASE_URL` is not OpenAI. |
+| `MODERATION_API_KEY` | reuses `AI_API_KEY` | An OpenAI key. With `AI_PROVIDER=0g`, setting it moves screening back to OpenAI's moderation endpoint. |
+| `MODERATION_PROVIDER` | automatic | `openai` or `llm` to override the choice above. |
 | `STATIC_DIR` | `/app/static` in Docker | Built frontend location. |
 
 `DEMO_MODE` is no longer read. All Hello Minds tuning is described in [HELLO_MINDS.md](HELLO_MINDS.md).
@@ -91,6 +92,45 @@ Test with your chosen model before going live: send a chat message, run one date
 4. Existing deployment: pushing to `main` redeploys. `MINDS_JUDGE` and `MINDS_SSE` are already in the `soulplex` env group. Add other tuning (for example `MINDS_ALLOWED_SKILLS`) to that group so the API and worker both get it.
 5. Custom domain: attach it to the web service, set `APP_ORIGIN` to that exact origin on **both** services, and redeploy.
 6. Confirm **soulplex-worker** is running and its logs show no errors. Free instances sleep and leave work queued; use the paid plans in the blueprint.
+
+### Render environment checklist (0G + Hello Minds)
+
+The blueprint creates three services: **soulplex** (the website and API in one container), **soulplex-db** (Postgres) and **soulplex-worker** (dates, persona syncs and other background work). Nothing is set on the database.
+
+Where a value goes matters:
+
+- **Env group `soulplex`** (Dashboard → Environment Groups). Both web and worker read it. Put shared, non-secret settings here, and any variable that is not in `render.yaml`, such as `AI_PROVIDER`.
+- **Web service `soulplex`**, Environment tab. The secrets marked `sync: false` live here. The worker copies them with `fromService`, so set them once on the web service. If you add a secret by hand to only one service, add it to the other too.
+
+| Variable | Where | Value | Notes |
+|---|---|---|---|
+| `APP_ENV` | group | `production` | `development` turns off secure cookies, HSTS and the startup checks, and exposes `/api/docs`. |
+| `PORT` | group | `8000` | Already set. |
+| `AI_PROVIDER` | group | `0g` | Not in the blueprint; add it. |
+| `AI_0G_TRUST_MODE` | group | `private` | Optional; this is the default. |
+| `AI_BASE_URL` | group | delete, or leave as is | The blueprint sets OpenAI's URL. With `AI_PROVIDER=0g` it is ignored, so 0G keys never go to OpenAI. |
+| `MODERATION_LLM_MODEL` | group | a small 0G model id | Optional. Defaults to `AI_MODEL`. |
+| `TRANSCRIBE_MODEL` | group | e.g. `openai/whisper-large-v3` | Optional. Confirm the id in `/v1/models`. Empty turns voice answers off. |
+| `MINDS_MIND_TYPE` / `MINDS_JUDGE` / `MINDS_SSE` / `MATCH_SCORE_MIN` / `SMTP_PORT` | group | `mastermind` / `0` / `1` / `70` / `587` | Already set by the blueprint. |
+| `AI_API_KEY` | web | 0G inference key, `sk-…` | pc.0g.ai → Dashboard → API Keys. Not the `mk-` management key. |
+| `AI_MODEL` | web | a chat model id | From `GET https://router-api.0g.ai/v1/models`. |
+| `MINDS_BUILDER_API_KEY` | web | Builder key | build.hellominds.ai console. Shown once. |
+| `SMTP_HOST` | web | e.g. `smtp.resend.com` | Your email provider. |
+| `SMTP_USERNAME` | web | e.g. `resend`, or `apikey` for SendGrid | |
+| `SMTP_PASSWORD` | web | provider API key or password | |
+| `SMTP_FROM` | web | e.g. `no-reply@yourdomain.com` | Must be a sender verified with the provider. |
+| `DATABASE_URL` | web and worker | set by Render | Do not edit. |
+| `APP_ORIGIN` | both | only with a custom domain | Without it the app uses Render's `RENDER_EXTERNAL_URL`. |
+| `DEMO_MODE` | anywhere | **delete** | No longer read. |
+
+Values that look like 32-character hex strings (for example `9f2c…`) are Render's generated placeholders, not real credentials. With placeholders, model calls fail and no email is sent. Replace them.
+
+After saving, redeploy **soulplex** and **soulplex-worker**, then check:
+
+1. `https://<your-host>/api/health` shows `minds: true` and `minds_circuit: "closed"`.
+2. Neither service's logs show `RuntimeError` at startup.
+3. A test account receives its verification email.
+4. One chat message, one date and one calibration complete. "The model request failed" in the logs means the chosen `AI_MODEL` does not return valid JSON; choose another from `/v1/models`.
 
 ## 4. Deploy on your own server (Docker Compose)
 
@@ -210,6 +250,9 @@ This list describes concrete missing operational work, not completed features:
 | 409 after editing memory | Intended stale/version guard. Reload and create a fresh scene. |
 | 409 on calibration | The member needs at least 4 answered statements per trait; the full 50 work best. |
 | 503 from live AI | Provider access/model compatibility/moderation config; do not switch silently to demo. |
+| "The AI provider balance is empty" | The 0G account is out of credits. Top up at pc.0g.ai. |
+| "The model request failed" with 0G | `AI_API_KEY` is the `mk-` key or a placeholder, `AI_MODEL` is not in `/v1/models`, or the model cannot return JSON. |
+| "Safety screening is unavailable" | Moderation could not run. It fails closed, so every message is blocked until the model or `MODERATION_API_KEY` works. |
 | No candidates | Same local city and intention, reciprocal age/gender, operator approval, discovery opt-in and shareable memory on both sides. |
 | 429 | Daily pilot quota or auth throttle reached; inspect aggregate usage without logging private content. |
 
