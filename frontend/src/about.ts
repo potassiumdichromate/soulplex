@@ -55,6 +55,8 @@ export const PROMPTS: Record<string, string> = {
 export const DEALBREAKERS: [string, string][] = [
   ["smoking", "Doesn't smoke"],
   ["drinking", "Doesn't drink"],
+  ["heavy_drinking", "Drinks only socially"],
+  ["veg_partner", "Is vegetarian"],
   ["family_plans", "Agrees with me on having children"],
   ["diet", "Is vegetarian, if I am"],
   ["religion", "Shares my religion"],

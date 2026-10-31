@@ -57,14 +57,15 @@ const fail = (status: number, msg = "Not found."): never => {
 /* ----------------------------- AI constants ----------------------------- */
 const CATEGORIES = ["backstory", "values", "lifestyle", "communication", "future", "interests", "boundaries"];
 const QUESTIONS: [string, string][] = [
-  ["backstory", "What is a chapter in your life that shaped who you are? Share only what you feel comfortable sharing."],
-  ["values", "What do you most appreciate in a relationship, and what does that look like in everyday life?"],
-  ["lifestyle", "Walk me through an ordinary weekend you would enjoy."],
-  ["communication", "When plans change or you disagree, how do you like to talk it through?"],
-  ["future", "What would you like the next few years to look like? Include location or relationship intentions if relevant."],
-  ["interests", "What do you love doing or learning about when nobody is making you do it?"],
-  ["boundaries", "What should your representative know to respect your time, pace and boundaries?"],
+  ["backstory", "Hey! Let's keep this easy. Tell me a little about you: where are you from, and what do you do?"],
+  ["interests", "What do you love doing in your free time? Movies, anime, cafés, travel, anything goes."],
+  ["lifestyle", "What does a perfect weekend look like for you? A cozy movie night, a new café, a quick getaway?"],
+  ["values", "How would your close friends describe you in a few words?"],
+  ["communication", "Are you more of a texter or a caller? And what makes a conversation fun for you?"],
+  ["future", "What are you hoping to find here? Something serious, or seeing where it goes?"],
+  ["boundaries", "Any preferences about the person you meet? Like whether they drink or smoke. \"Doesn't matter\" is a fine answer too."],
 ];
+const NODS = ["Love that!", "Nice, that helps.", "Got it.", "Ooh, good one.", "That's lovely.", "Noted!", "Perfect."];
 const CONTACT = /\b[\w.+-]+@[\w.-]+\.[a-z]{2,}\b|https?:\/\/|(?:\+?\d[\s().-]*){8,}/i;
 
 /* ------------------------------ resonance ------------------------------ */
@@ -920,12 +921,12 @@ function route(path: string, method: string, b: Body): any {
     quota("chat:" + u.id, 60);
     const idx = db.messages.filter((x) => x.user_id === u.id && x.role === "user").length;
     const [category] = QUESTIONS[Math.min(idx, QUESTIONS.length - 1)];
-    const next = idx + 1 < QUESTIONS.length ? QUESTIONS[idx + 1][1] : "Thank you. Review the proposed memories, edit anything that feels wrong, and choose which details your agent may share. What else would you like me to understand?";
+    const next = idx + 1 < QUESTIONS.length ? QUESTIONS[idx + 1][1] : "That's a great start! Check the notes I made about you, fix anything that feels off, and tell me anything else you'd like me to know.";
     const t = now();
     const src: Msg = { id: uid(), user_id: u.id, role: "user", content: text, created: t };
-    db.messages.push(src, { id: uid(), user_id: u.id, role: "assistant", content: `Thank you for sharing that. ${next}`, created: t + 0.001 });
+    db.messages.push(src, { id: uid(), user_id: u.id, role: "assistant", content: `${NODS[idx % NODS.length]} ${next}`, created: t + 0.001 });
     db.memories.push({ id: uid(), user_id: u.id, category, content: text.slice(0, 600), source_quote: text.slice(0, 600), source_id: src.id, status: "proposed", visibility: "private", version: 1, updated: t });
-    return { reply: `Thank you for sharing that. ${next}`, proposals: 1, tokens: 0 };
+    return { reply: `${NODS[idx % NODS.length]} ${next}`, proposals: 1, tokens: 0 };
   }
   if (path === "/memories" && M_ === "GET") return db.memories.filter((x) => x.user_id === u.id).sort((x, y) => y.updated - x.updated).map(factData);
   if (path === "/memories" && M_ === "POST") {

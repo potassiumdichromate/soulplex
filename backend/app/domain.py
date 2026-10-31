@@ -43,7 +43,7 @@ def fact_data(m):
 def public_profile(u, revealed=False):
     return {
         "face": face_view(u.face, revealed=revealed),
-        "about": {k: v for k, v in (u.about or {}).items() if k != "dealbreakers"},
+        "about": {k: v for k, v in (u.about or {}).items() if k not in ("dealbreakers", "studio_habits", "partner_active")},
         "id": u.id,
         "hue": int(hashlib.sha256(u.id.encode()).hexdigest()[:4], 16) % 360,
         "name": u.name,

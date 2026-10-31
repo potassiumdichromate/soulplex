@@ -121,3 +121,22 @@ def test_permissions_default_off_and_blind_run_omits_owner_answer(client, login,
     blob = str(seen["context"])
     assert "I would ask politely." not in blob
     assert run.json()["twin_option"] == "ask"
+
+
+def test_partner_lifestyle_picks_become_private_must_haves():
+    from types import SimpleNamespace as NS
+    from app.about import violates
+    from app.studio import apply_profile
+
+    def row(fid, opts, status="answered"):
+        return NS(field_id=fid, option_ids=opts, status=status)
+
+    me = NS(about={}, gender=None, seeking=None, intent=None)
+    apply_profile(me, [row("H01_drinking", ["socially"]), row("P01_drinking", ["no"]), row("P02_smoking", ["any"])])
+    assert me.about["studio_habits"] == {"drinking": "socially"}
+    assert me.about["dealbreakers"] == ["drinking"]
+    assert violates(me.about, {"studio_habits": {"drinking": "socially"}})
+    assert not violates(me.about, {"studio_habits": {"drinking": "no"}})
+    assert not violates(me.about, {})  # unknown never excludes
+    apply_profile(me, [row("P01_drinking", ["any"])])
+    assert me.about["dealbreakers"] == []

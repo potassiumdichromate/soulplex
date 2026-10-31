@@ -42,7 +42,7 @@ PROMPTS = {
     "future": ("In five years, I hope…", "future"),
     "hours": ("I could talk for hours about…", "interests"),
 }
-DEALBREAKERS = ["smoking", "drinking", "family_plans", "diet", "religion"]
+DEALBREAKERS = ["smoking", "drinking", "heavy_drinking", "family_plans", "diet", "veg_partner", "religion"]
 VEG = {"vegetarian", "eggetarian", "vegan", "jain"}
 LOVE = {"words": "words of affirmation", "time": "quality time", "gifts": "thoughtful gifts", "acts": "acts of service", "touch": "physical closeness"}
 
@@ -154,6 +154,8 @@ MUST_LABEL = {
     "family_plans": "agrees on children",
     "diet": "is vegetarian",
     "religion": "shares your religion",
+    "heavy_drinking": "doesn't drink a lot",
+    "veg_partner": "is vegetarian",
 }
 
 
@@ -164,13 +166,21 @@ def violations(a: dict, b: dict) -> list[str]:
 
 def violates(a: dict, b: dict) -> bool:
     """True if b's answers break one of a's must-haves. Unknown answers never exclude."""
+    a = {**a.get("studio_habits", {}), **{k: v for k, v in a.items() if v is not None}}
+    b = {**b.get("studio_habits", {}), **{k: v for k, v in b.items() if v is not None}}
     for d in a.get("dealbreakers", []):
         mine, theirs = a.get(d), b.get(d)
+        if d in ("heavy_drinking", "veg_partner"):
+            theirs = b.get("drinking" if d == "heavy_drinking" else "diet")
         if theirs is None:
             continue
         if d == "smoking" and theirs != "no":
             return True
         if d == "drinking" and theirs != "no":
+            return True
+        if d == "heavy_drinking" and b.get("drinking") == "yes":
+            return True
+        if d == "veg_partner" and b.get("diet") is not None and b.get("diet") not in VEG:
             return True
         if d == "family_plans" and mine and {mine, theirs} == {"want", "dont_want"}:
             return True

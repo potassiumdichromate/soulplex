@@ -4,7 +4,7 @@ import { api } from "../api";
 import { useStore } from "../store";
 import { Wisp } from "../ui";
 
-type Option = { id: string; label: string };
+type Option = { id: string; label: string; icon?: string };
 type Field = {
   field_id: string;
   prompt: string;
@@ -15,6 +15,8 @@ type Field = {
   text_max: number;
   options: Option[];
   trigger?: string;
+  icon?: string;
+  group?: string;
 };
 type Schema = {
   fields: Field[];
@@ -26,26 +28,40 @@ type Schema = {
 type Answer = { field_id: string; option_ids: string[]; free_text: string; status: string; permission_scope?: string };
 type Cal = { scenario_id: string; owner_locked?: boolean; twin_locked?: boolean; twin_option?: string; twin_summary?: string; rating?: string; owner_option?: string };
 
-const STEPS = ["welcome", "privacy", "age", "mode", "Q01_gender", "Q01_seeking", "ages", "Q01_distance", "Q02", "Q03", "Q04", "Q05", "preview", "calibration", "facts", "permissions", "ready"] as const;
+const STEPS = ["welcome", "age", "Q01_gender", "A01_vibe", "S02", "A03_weekend", "A04_life", "habits", "S01", "Q01_seeking", "ages", "Q01_distance", "Q02", "partner", "Q04", "Q05", "preview", "facts", "permissions", "ready"] as const;
+const GROUPS: Record<string, string[]> = {
+  habits: ["H01_drinking", "H02_smoking", "H03_workout", "H04_diet"],
+  partner: ["P01_drinking", "P02_smoking", "P03_active", "P04_diet"],
+};
+const ABOUT = new Set(["Q01_gender", "A01_vibe", "S02", "A03_weekend", "A04_life", "habits", "S01"]);
+const LOOKING = new Set(["Q01_seeking", "ages", "Q01_distance", "Q02", "partner", "Q04", "Q05"]);
 
+/* The twin talks; the person taps. Titles are what the twin says, hints are the small print. */
 const COPY: Record<string, { title: string; hint: string }> = {
-  welcome: { title: "Meet your twin", hint: "A short beginning. You can leave and come back." },
-  privacy: { title: "Before any questions", hint: "A notice is not blanket consent. Every share stays off until you turn it on." },
-  age: { title: "Adults only", hint: "This check is separate from the ages you hope to meet." },
-  mode: { title: "How do you want to teach?", hint: "Taps and conversation save the same answers." },
-  Q01_gender: { title: "Who could feel right", hint: "First, the basics. I will only explore mutually eligible people." },
-  Q01_seeking: { title: "Who you'd like to meet", hint: "Open to all genders stands on its own." },
-  ages: { title: "Age and city", hint: "A preference range never replaces your own adult check." },
-  Q01_distance: { title: "Where should your twin look?", hint: "Cross-city discovery only happens if you both choose it." },
-  Q02: { title: "What kind of connection", hint: "Required. There is no skip on this one." },
-  Q03: { title: "A definite no?", hint: "Skip leaves this unknown. None for now is an explicit choice." },
-  Q04: { title: "What would make you look twice?", hint: "Up to three. There isn’t a right mix." },
-  Q05: { title: "Choose your first scene", hint: "Where would you feel most yourself? Skip is not the same as Surprise me." },
-  preview: { title: "Your twin, so far", hint: "A mirror of what you chose. Not a personality reading." },
-  calibration: { title: "A tiny challenge", hint: "Your twin answers before it sees what you chose." },
-  facts: { title: "Each fact has a permission", hint: "Private, inside your twin, or shareable. Sharing starts off." },
-  permissions: { title: "Twin Permission Center", hint: "Every optional switch starts off." },
-  ready: { title: "Your twin is in your hands", hint: "Private is a complete choice. Matching waits for your permission." },
+  welcome: { title: "Hey, I'm your twin 👋", hint: "I'll go on the first dates for you, so I'd love to get to know you a little. No essays: just tap what feels like you. Takes about two minutes." },
+  age: { title: "Quick thing first", hint: "Soulplex is for adults. Everything you tell me stays private until you choose to share it, and you can skip anything." },
+  Q01_gender: { title: "Let's start with you. I am a…", hint: "This only helps me find people who'd like to meet you too." },
+  A01_vibe: { title: "How would your friends describe you?", hint: "Pick up to 4." },
+  S02: { title: "What are you into?", hint: "Pick up to 6, the things you could talk about for hours." },
+  A03_weekend: { title: "Your perfect weekend looks like…", hint: "Just pick the one that sounds most like you." },
+  A04_life: { title: "What matters most to you right now?", hint: "Up to 3. Career, family, a bit of everything?" },
+  habits: { title: "A few quick lifestyle bits", hint: "Tap what fits. Skip anything you'd rather not say." },
+  S01: { title: "When you're chatting with someone new, you're usually…", hint: "So I can sound like you on dates." },
+  Q01_seeking: { title: "Now, who would you like to meet?", hint: "Pick everyone you're open to." },
+  ages: { title: "What age range feels right?", hint: "You can change this any time." },
+  Q01_distance: { title: "How far should I look?", hint: "Other cities only if you both say yes." },
+  Q02: { title: "What are you hoping to find?", hint: "No wrong answer here." },
+  partner: { title: "Any preferences about their lifestyle?", hint: "\u201cDoesn't matter\u201d keeps things open. I'll only rule people out on what you pick here." },
+  Q04: { title: "What would make you fall for someone?", hint: "Pick up to 3." },
+  Q05: { title: "Where would you feel most yourself on a first date?", hint: "I'll start our dates there." },
+  preview: { title: "Here's you, in a nutshell", hint: "This is just what you picked, not a personality test. Untick anything that doesn't sound right." },
+  calibration: { title: "Let's see if I get you", hint: "You answer first, then I guess. Tell me how close I got." },
+  facts: { title: "Who gets to see what?", hint: "Everything starts private. Make something shareable only if you want me to mention it on dates." },
+  permissions: { title: "What I'm allowed to do", hint: "Every switch starts off. Turn on only what you're comfortable with." },
+  ready: { title: "That's it, we're ready! 🎉", hint: "You can tell me more any time from the Agent tab." },
+  H01_drinking: { title: "Drinking", hint: "" }, H02_smoking: { title: "Smoking", hint: "" }, H03_workout: { title: "Working out", hint: "" }, H04_diet: { title: "Food", hint: "" },
+  P01_drinking: { title: "Their drinking", hint: "" }, P02_smoking: { title: "Their smoking", hint: "" }, P03_active: { title: "Their activity", hint: "" }, P04_diet: { title: "Their food", hint: "" },
+  Q03: { title: "Definite nos", hint: "" },
 };
 
 function fieldOf(schema: Schema | null, id: string) {
@@ -215,6 +231,19 @@ export function Studio({ onClose }: { start?: number; onClose: () => void }) {
 
   const progress = Math.round((step / (STEPS.length - 1)) * 100);
   const copy = COPY[id] ?? COPY.welcome;
+  const aboutSteps = STEPS.filter((x) => ABOUT.has(x));
+  const lookSteps = STEPS.filter((x) => LOOKING.has(x));
+  const section = ABOUT.has(id)
+    ? `About you · ${aboutSteps.indexOf(id as any) + 1} of ${aboutSteps.length}`
+    : LOOKING.has(id)
+      ? `Who you're looking for · ${lookSteps.indexOf(id as any) + 1} of ${lookSteps.length}`
+      : ["facts", "permissions"].includes(id) ? "Your privacy" : "Your twin";
+  const group = GROUPS[id];
+  const pickInGroup = (f: Field, o: Option) => {
+    const same = answers[f.field_id]?.option_ids?.[0] === o.id && answers[f.field_id]?.status === "answered";
+    setAnswers((prev) => ({ ...prev, [f.field_id]: { field_id: f.field_id, option_ids: same ? [] : [o.id], free_text: "", status: same ? "skipped" : "answered" } }));
+    saveAnswer(f.field_id, same ? [] : [o.id], same ? "skipped" : "answered", "");
+  };
 
   return (
     <div className="wizard-backdrop">
@@ -228,30 +257,45 @@ export function Studio({ onClose }: { start?: number; onClose: () => void }) {
           <button className="icon-btn" aria-label="Close setup" onClick={exit}><X size={18} /></button>
         </header>
         <div className="w-body studio-body">
-          <Wisp hue={user?.hue ?? 330} size={54} self face={user?.face} seed={user?.id} />
-          <p className="eyebrow">Teach your twin</p>
-          <h2>{copy.title}</h2>
-          <p className="hint">{copy.hint}</p>
+          <div className="studio-say">
+            <Wisp hue={user?.hue ?? 330} size={54} self face={user?.face} seed={user?.id} />
+            <div className="studio-bubble">
+              <p className="eyebrow">{section}</p>
+              <h2>{copy.title}</h2>
+              {copy.hint && <p className="hint">{copy.hint}</p>}
+            </div>
+          </div>
 
           {id === "welcome" && (
-            <button className="btn primary" onClick={next}>Begin <ArrowRight size={16} /></button>
-          )}
-          {id === "privacy" && (
-            <div className="studio-note">
-              <ShieldCheck size={18} />
-              <p>Soulplex stores the choices you confirm. Skipped questions stay unknown. Your twin cannot share a fact, join a virtual date, or send data to an outside provider until you allow that specific use.</p>
-              <button className="btn primary" onClick={next}>I’ve read this</button>
-            </div>
+            <button className="btn primary" onClick={next}>Let's go <ArrowRight size={16} /></button>
           )}
           {id === "age" && (
-            <button className="btn primary" disabled={busy} onClick={() => perform(async () => { await api("/onboarding/age", "POST", { adult: true }); next(); })}>
-              I am 18 or older
-            </button>
+            <div className="studio-note">
+              <ShieldCheck size={18} />
+              <p>I only share what you allow, one thing at a time. Skipped questions just stay unknown.</p>
+              <button className="btn primary" disabled={busy} onClick={() => perform(async () => { await api("/onboarding/age", "POST", { adult: true }); next(); })}>
+                I'm 18 or older <ArrowRight size={16} />
+              </button>
+            </div>
           )}
-          {id === "mode" && (
-            <div className="w-chips big">
-              <button className={mode === "taps" ? "on" : ""} onClick={() => { setMode("taps"); next(); }}>Quick taps</button>
-              <button className={mode === "talk" ? "on" : ""} onClick={() => { setMode("talk"); next(); }}><MessageCircle size={14} /> Talk to my twin</button>
+          {group && schema && (
+            <div className="studio-groups">
+              {group.map((fid) => fieldOf(schema, fid)).filter(Boolean).map((f) => (
+                <div key={f!.field_id} className="studio-group">
+                  <span className="studio-group-label">{f!.icon} {f!.prompt}</span>
+                  <div className="w-chips">
+                    {f!.options.map((o) => {
+                      const on = answers[f!.field_id]?.status === "answered" && answers[f!.field_id]?.option_ids?.[0] === o.id;
+                      return (
+                        <button key={o.id} type="button" className={on ? "on" : ""} aria-pressed={on} onClick={() => pickInGroup(f!, o)}>{o.label}</button>
+                      );
+                    })}
+                  </div>
+                </div>
+              ))}
+              <div className="btn-row">
+                <button className="btn primary" disabled={busy} onClick={next}>Continue <ArrowRight size={16} /></button>
+              </div>
             </div>
           )}
           {id === "ages" && (
@@ -271,14 +315,14 @@ export function Studio({ onClose }: { start?: number; onClose: () => void }) {
               })}>Continue</button>
             </div>
           )}
-          {field && id !== "ages" && (
+          {field && id !== "ages" && !group && (
             <>
               {mode === "talk" && (
                 <div className="studio-talk">
-                  <textarea value={talk} maxLength={400} placeholder="Say it in your own words. I'll match it to a choice for you to confirm." onChange={(e) => setTalk(e.target.value)} />
+                  <textarea value={talk} maxLength={400} placeholder="Type it however you like, I'll match it to an option." onChange={(e) => setTalk(e.target.value)} />
                   <button className="btn ghost sm" type="button" onClick={hear}>Match a choice</button>
-                  {guess && <p className="fine">I heard “{guess.label}”. That is a choice, not a personality claim.</p>}
-                  {talk && !guess && <p className="fine">I couldn’t match that to a listed choice. Pick one below, or skip if this question allows it.</p>}
+                  {guess && <p className="fine">Sounds like “{guess.label}”. Tap it below to confirm.</p>}
+                  {talk && !guess && <p className="fine">Hmm, I couldn't match that. Pick the closest one below.</p>}
                 </div>
               )}
               <div className="w-chips big">
@@ -287,15 +331,19 @@ export function Studio({ onClose }: { start?: number; onClose: () => void }) {
                     if (field.kind === "single") {
                       saveAnswer(field.field_id, [o.id]).then((ok) => ok && next());
                     } else toggle(o);
-                  }}>{o.label}</button>
+                  }}>{o.icon && <span className="chip-ico" aria-hidden="true">{o.icon}</span>}{o.label}</button>
                 ))}
               </div>
+              {field.kind === "multi" && field.maximum > 1 && <p className="fine studio-count">{selected.length} of {field.maximum} picked</p>}
               {(selected.includes("other") || selected.includes("depends")) && field.text_max > 0 && (
                 <textarea value={note} maxLength={field.text_max} placeholder="Optional note. It stays private until you approve it." onChange={(e) => setNote(e.target.value)} />
               )}
               <div className="btn-row">
-                {field.kind === "multi" && <button className="btn primary" disabled={!selected.length || busy} onClick={commitMulti}>Continue</button>}
-                {field.skip && <button className="btn ghost" disabled={busy} onClick={() => { saveAnswer(field.field_id, [], "skipped", "").then((ok) => ok && next()); }}>Skip for now</button>}
+                {field.kind === "multi" && <button className="btn primary" disabled={!selected.length || busy} onClick={commitMulti}>Continue <ArrowRight size={16} /></button>}
+                {field.skip && <button className="btn ghost" disabled={busy} onClick={() => { saveAnswer(field.field_id, [], "skipped", "").then((ok) => ok && next()); }}>Skip</button>}
+                <button className="link" type="button" onClick={() => setMode(mode === "talk" ? "taps" : "talk")}>
+                  <MessageCircle size={14} /> {mode === "talk" ? "Just tap instead" : "Say it in my own words"}
+                </button>
               </div>
             </>
           )}
@@ -307,49 +355,13 @@ export function Studio({ onClose }: { start?: number; onClose: () => void }) {
                   <span>{line}</span>
                 </label>
               ))}
-              {!preview.length && <p className="fine">Answer a few choices and your twin will mirror them here.</p>}
-              <p className="fine">Nothing here is a score. Uncheck a line to leave it out. Saved lines stay private until you change that.</p>
+              {!preview.length && <p className="fine">Pick a few things and they'll show up here.</p>}
+              <p className="fine">Saved lines stay private until you decide otherwise.</p>
               <button className="btn primary" disabled={busy} onClick={() => perform(async () => {
                 const lines = preview.filter((line) => keep[line] !== false);
                 if (lines.length) await api("/onboarding/preview/approve", "POST", { lines });
                 next();
               })}><Sparkles size={15} /> This sounds like me</button>
-            </div>
-          )}
-          {id === "calibration" && scene && (
-            <div className="studio-cal">
-              <p className="eyebrow">Challenge {calI + 1} of {schema?.calibration.length} · {scene.id}</p>
-              <h3>{scene.title}</h3>
-              <p>{scene.prompt}</p>
-              {phase === "owner" && (
-                <div className="w-chips big">
-                  {scene.options.map((o) => (
-                    <button key={o.id} type="button" disabled={busy} onClick={() => lockOwner(o.id)}>{o.label}</button>
-                  ))}
-                </div>
-              )}
-              {phase === "twin" && (
-                <div className="studio-note">
-                  <p>Your answer is locked away. Your twin only sees facts you have already approved.</p>
-                  <button className="btn primary" disabled={busy} onClick={runTwin}>Ask my twin</button>
-                </div>
-              )}
-              {phase === "review" && (
-                <div className="studio-review">
-                  <p><b>You:</b> {scene.options.find((o) => o.id === savedCal?.owner_option)?.label}</p>
-                  <p><b>Your twin:</b> {savedCal?.twin_option ? scene.options.find((o) => o.id === savedCal.twin_option)?.label : "Not completed"}</p>
-                  {savedCal?.twin_summary && <p className="fine">{savedCal.twin_summary}</p>}
-                  {savedCal?.twin_option && (
-                    <div className="w-chips">
-                      <button type="button" onClick={() => rate("yes")}>Yes, that feels like me</button>
-                      <button type="button" onClick={() => rate("somewhat")}>Somewhat - I would do it differently</button>
-                      <button type="button" onClick={() => rate("no")}>No - not like me</button>
-                    </div>
-                  )}
-                  <textarea value={note} maxLength={600} placeholder="Optional correction. It stays a proposal until you approve it." onChange={(e) => setNote(e.target.value)} />
-                  {!savedCal?.twin_option && <button className="btn ghost" onClick={() => { setCalI(0); next(); }}>Finish this later</button>}
-                </div>
-              )}
             </div>
           )}
           {id === "facts" && (
@@ -384,14 +396,14 @@ export function Studio({ onClose }: { start?: number; onClose: () => void }) {
                   <span>{c.label}</span>
                 </label>
               ))}
-              <button className="btn primary" disabled={busy} onClick={finishPermissions}>Save permissions</button>
+              <button className="btn primary" disabled={busy} onClick={finishPermissions}>Save and finish</button>
             </div>
           )}
           {id === "ready" && (
             <div className="studio-note">
               <p>{ready === "ready" ? "Matching and virtual dates are on, inside the permissions you set." : ready === "local_only" ? "Your twin stays on this device’s rules. Outside processing is off." : "Your twin stays private. You can turn matching on later in Settings."}</p>
               {fidelity && <p className="fine">{fidelity}</p>}
-              <button className="btn primary" onClick={onClose}><Check size={16} /> Done for now</button>
+              <button className="btn primary" onClick={onClose}><Check size={16} /> Done</button>
             </div>
           )}
         </div>

@@ -56,6 +56,8 @@ export function aboutFacts(a: About): [string, string, string][] {
 
 export function violates(a: About, b: About) {
   for (const d of a.dealbreakers ?? []) {
+    if (d === "heavy_drinking") { if (b.drinking === "yes") return true; continue; }
+    if (d === "veg_partner") { if (b.diet && !VEG.has(b.diet)) return true; continue; }
     const mine = (a as any)[d], theirs = (b as any)[d];
     if (theirs == null) continue;
     if ((d === "smoking" || d === "drinking") && theirs !== "no") return true;

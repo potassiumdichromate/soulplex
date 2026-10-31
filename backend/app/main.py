@@ -527,6 +527,10 @@ async def set_about(
                 visibility="shareable",
             )
         )
+    # Keys the setup flow owns survive a profile edit.
+    for key in ("studio_habits", "partner_active", "studio_dealbreakers", "partner_values", "distance"):
+        if key in (u.about or {}):
+            about[key] = u.about[key]
     u.about = about
     db.execute(update(User).where(User.id == u.id).values(memory_version=User.memory_version + 1))
     log(db, u, "about_updated")

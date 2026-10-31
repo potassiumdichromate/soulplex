@@ -512,8 +512,8 @@ def authorize(request: Request, db: Session = Depends(get_db)):
     if not granted(db, user, "allow_virtual_interactions"):
         missing.append("virtual_dates")
     runs = db.scalars(select(CalibrationRun).where(CalibrationRun.user_id == user.id)).all()
-    reviewed = [r for r in runs if r.scenario_id in ("CAL02", "CAL01", "CAL03") and r.rating and r.twin_method == "model"]
-    mode = "ready" if not missing and len(reviewed) >= 3 else "private_only" if not missing else "local_only"
+    # The calibration game is optional now; consent and verification decide readiness.
+    mode = "ready" if not missing else "private_only"
     if not external_allowed(db, user):
         mode = "local_only" if mode == "ready" else mode
     studio = dict(user.studio or {})

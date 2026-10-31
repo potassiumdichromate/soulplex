@@ -5419,3 +5419,54 @@ textarea::placeholder {
     gap: 3px;
   }
 }
+
+/* ---------- Friendly setup: the twin asks, you tap ---------- */
+.studio-say { display: flex; align-items: flex-end; gap: 12px; width: 100%; margin-bottom: 4px; }
+.studio-say > :first-child { flex: none; }
+.studio-bubble {
+  flex: 1; min-width: 0;
+  padding: 14px 18px 16px;
+  border-radius: 22px 22px 22px 6px;
+  background: rgba(255, 255, 255, 0.9);
+  border: 1px solid var(--line);
+  box-shadow: 0 10px 30px -18px rgba(120, 60, 140, 0.35);
+  animation: rise 0.3s ease both;
+}
+.studio-bubble .eyebrow { margin: 0 0 4px; }
+.studio-body .studio-bubble h2 { font-size: clamp(1.45rem, 3.4vw, 1.9rem); line-height: 1.15; margin: 0 0 4px; color: var(--ink); }
+.studio-bubble .hint { font-size: 15px; line-height: 1.45; }
+.studio-body .w-chips.big button { font-size: 15px; color: var(--ink); }
+.chip-ico { font-size: 17px; line-height: 1; }
+.studio-count { margin: -4px 0 0; }
+.studio-groups { display: grid; gap: 12px; width: 100%; }
+.studio-group {
+  display: grid; gap: 8px;
+  padding: 12px 14px;
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.72);
+  border: 1px solid var(--line);
+}
+.studio-group-label { font-weight: 700; font-size: 15px; color: var(--ink); }
+.studio-body .btn-row { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; width: 100%; }
+.studio-body .btn-row .btn.primary { flex: 1 1 auto; }
+.studio-body .btn-row .link { display: inline-flex; align-items: center; gap: 6px; font-size: 14px; }
+.quick-replies { display: flex; flex-wrap: wrap; gap: 7px; }
+.quick-replies button {
+  padding: 7px 13px; border-radius: 99px;
+  border: 1px solid var(--line-2);
+  background: rgba(255, 255, 255, 0.85);
+  font-size: 14px; font-weight: 600; color: var(--ink-2);
+  transition: background 0.15s, transform 0.15s;
+}
+.quick-replies button:hover { background: rgba(74, 44, 110, 0.07); }
+.quick-replies button:active { transform: scale(0.96); }
+.quick-replies button.on { background: var(--grad); color: #2a0f2e; border-color: transparent; }
+@media (max-width: 560px) {
+  .studio-say { gap: 8px; }
+  .studio-say > :first-child { width: 40px; }
+  .studio-bubble { padding: 12px 14px 14px; }
+}
+.studio-body .hint { display: block; text-shadow: none; background: none; padding: 0; border-radius: 0; text-align: left; justify-content: initial; }
+.studio-preview { display: grid; gap: 8px; width: 100%; }
+.studio-body label.studio-line { display: flex; flex-direction: row; align-items: flex-start; justify-content: flex-start; text-align: left; gap: 12px; font-size: 15px; color: var(--ink); }
+.studio-body label.studio-line input { width: 18px; height: 18px; flex: none; margin: 2px 0 0; accent-color: #e05a9c; }

@@ -160,7 +160,7 @@ function AddTrait() {
         <label className="switch">
           <input type="checkbox" checked={share} onChange={(e) => setShare(e.target.checked)} />
           <i />
-          <span>{share ? "My agent may share this on dates" : "Private: only shapes my interview"}</span>
+          <span>{share ? "My agent may share this on dates" : "Private: only helps my agent know me"}</span>
         </label>
         <button className="btn primary" disabled={busy || text.trim().length < 3}>
           <Plus size={16} /> Teach my agent
@@ -169,6 +169,17 @@ function AddTrait() {
     </form>
   );
 }
+
+/* Tap-to-add answers for each chat question, in the same order as the agent asks them. */
+const QUICK: string[][] = [
+  ["I work in tech", "I'm a student", "I run my own thing", "I'm from Delhi", "I'm from Dubai", "Career-driven but family comes first"],
+  ["Movies & anime", "Exploring cafés", "Casual dining", "Travel", "Weekend getaways", "Music", "Reading", "Fitness", "Gaming", "Cooking"],
+  ["A cozy movie night in", "Trying a new café", "A quick getaway", "Out with friends", "Sleeping in and recharging", "Something outdoors"],
+  ["Good sense of humour", "Active listener", "Open communicator", "Direct and candid", "Calm under pressure", "Independent", "Warm and caring"],
+  ["More of a texter", "More of a caller", "I love voice notes", "Banter and memes", "Deep late-night chats", "I'd rather meet in person"],
+  ["Something serious", "Long-term, marriage in mind", "Seeing where it goes", "Still figuring it out"],
+  ["Prefer a non-drinker", "Social drinking is fine", "Non-smoker, please", "Smoking doesn't bother me", "Values family time", "Doesn't matter much"],
+];
 
 function Interview() {
   const { messages, perform, load, mode, notify, busy, user } = useStore();
@@ -194,6 +205,21 @@ function Interview() {
         )}
         <div ref={end} />
       </div>
+      {!sending && QUICK[messages.filter((m) => m.role === "user").length] && (
+        <div className="quick-replies" aria-label="Tap to add to your answer">
+          {QUICK[messages.filter((m) => m.role === "user").length].map((q) => {
+            const on = draft.split(", ").includes(q);
+            return (
+              <button key={q} type="button" className={on ? "on" : ""} aria-pressed={on} onClick={() =>
+                setDraft((d) => {
+                  const parts = d ? d.split(", ").filter(Boolean) : [];
+                  return (on ? parts.filter((x) => x !== q) : [...parts, q]).join(", ");
+                })
+              }>{q}</button>
+            );
+          })}
+        </div>
+      )}
       <form
         className="composer"
         onSubmit={(e) => {
@@ -214,7 +240,7 @@ function Interview() {
       >
         <textarea
           aria-label="Your answer"
-          placeholder="Answer in your own words…"
+          placeholder="Tap a few above, or just type…"
           value={draft}
           maxLength={2000}
           onChange={(e) => setDraft(e.target.value)}
@@ -290,7 +316,7 @@ export function Agent() {
           <ListChecks size={16} /> Traits <b>{approved.length}</b>
         </button>
         <button role="tab" aria-selected={tab === "chat"} className={tab === "chat" ? "on" : ""} onClick={() => setTab("chat")}>
-          <MessageCircle size={16} /> Interview
+          <MessageCircle size={16} /> Chat
         </button>
         <button role="tab" aria-selected={tab === "review"} className={tab === "review" ? "on" : ""} onClick={() => setTab("review")}>
           <Inbox size={16} /> To review {proposals.length > 0 && <b className="hot">{proposals.length}</b>}
