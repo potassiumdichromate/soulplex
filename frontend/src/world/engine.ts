@@ -124,6 +124,9 @@ class Wisp {
   marker: THREE.Mesh;
   legs: { hip: THREE.Group; knee: THREE.Group }[] = [];
   arms: { shoulder: THREE.Group; elbow: THREE.Group }[] = [];
+  ghostLegs: { hip: THREE.Group; knee: THREE.Group }[] = [];
+  ghostArms: { shoulder: THREE.Group; elbow: THREE.Group }[] = [];
+  ghostHead: THREE.Group | null = null;
   target = new THREE.Vector3();
   vel = new THREE.Vector3();
   phase = Math.random() * 10;
@@ -148,11 +151,24 @@ class Wisp {
       this.mats.push(m);
       return m;
     };
-    const skin = mat(info.skin ?? "#d6a07a", { roughness: 0.55, metalness: 0.02 });
-    const hair = mat(info.hair ?? "#2b1d18", { roughness: 0.72, metalness: 0.04 });
-    const outfit = mat(info.outfit ?? this.color, { roughness: 0.46, metalness: 0.08, emissive: info.outfit ?? this.color, emissiveIntensity: 0.2 });
-    const pants = mat("#2a2644", { roughness: 0.62 });
-    const shoes = mat("#16131f", { roughness: 0.4, metalness: 0.12 });
+    const style = info.hairStyle ?? 0;
+    const long = style === 1 || style === 2 || style === 3 || style === 6;
+    const feminine = long || style === 8;
+    const skin = mat(info.skin ?? "#d6a07a", { roughness: 0.48, metalness: 0.02 });
+    const hair = mat(style === 7 || style === 8 ? (info.hair ?? "#2b1d18") : feminine ? "#6a4332" : "#241c1a", { roughness: 0.62, metalness: 0.03 });
+    const hoodie = mat("#f6f3fb", { roughness: 0.55, metalness: 0.02 });
+    const shirt = mat(feminine ? "#fffdfb" : "#1b1824", { roughness: 0.5 });
+    const pants = mat(feminine ? "#cbb6ea" : "#2c3140", { roughness: 0.6 });
+    const shoes = mat("#f7f4ef", { roughness: 0.35, metalness: 0.08 });
+    const sole = mat("#efe7ff", { roughness: 0.3, emissive: feminine ? "#e7b6ff" : "#9fd4ff", emissiveIntensity: 0.85 });
+    const ghostMat = new THREE.MeshBasicMaterial({
+      color: feminine ? "#ff8ec8" : "#8fd7ff",
+      transparent: true,
+      opacity: 0.3,
+      depthWrite: false,
+      blending: THREE.AdditiveBlending,
+    });
+    this.mats.push(ghostMat);
     const part = (geo: THREE.BufferGeometry, m: THREE.Material, y: number, parent: THREE.Object3D, x = 0, z = 0) => {
       const mesh = new THREE.Mesh(geo, m);
       mesh.position.set(x, y, z);
@@ -168,21 +184,27 @@ class Wisp {
       const knee = new THREE.Group();
       knee.position.y = -0.25;
       part(capsule(0.06, 0.15, "shin"), pants, -0.12, knee);
-      part(sharedGeo("shoe", () => new THREE.BoxGeometry(0.11, 0.06, 0.18)), shoes, -0.245, knee, 0, 0.035);
+      part(sharedGeo("shoe", () => new THREE.BoxGeometry(0.12, 0.055, 0.2)), shoes, -0.24, knee, 0, 0.04);
+      part(sharedGeo("sole", () => new THREE.BoxGeometry(0.1, 0.02, 0.16)), sole, -0.275, knee, 0, 0.045);
       hip.add(knee);
       this.root.add(hip);
       this.legs.push({ hip, knee });
     }
-    // torso + neck
-    const torso = part(capsule(0.165, 0.24, "torso"), outfit, 0.77, this.root);
-    torso.scale.z = 0.78;
+    // hoodie over a shirt, with a small pack like the island twins
+    const torso = part(capsule(0.165, 0.22, "torso"), hoodie, 0.78, this.root);
+    torso.scale.set(1.05, 1, 0.82);
+    part(sharedGeo("shirt", () => new THREE.SphereGeometry(0.07, MOBILE ? 6 : 10, MOBILE ? 5 : 8)), shirt, 0.9, this.root, 0, 0.06).scale.set(1.3, 0.7, 0.4);
+    const hood = part(sharedGeo("hood", () => new THREE.SphereGeometry(0.11, MOBILE ? 8 : 12, MOBILE ? 6 : 10)), hoodie, 1.08, this.root, 0, -0.06);
+    hood.scale.set(1.15, 0.7, 0.7);
+    const pack = part(sharedGeo("pack", () => new THREE.BoxGeometry(0.16, 0.2, 0.07)), hoodie, 0.8, this.root, 0, -0.14);
+    pack.rotation.x = 0.08;
     part(sharedGeo("neck", () => new THREE.CylinderGeometry(0.06, 0.07, 0.1, MOBILE ? 6 : 10)), skin, 1.03, this.root);
     // arms: shoulder -> upper arm -> elbow -> forearm -> hand
     for (const side of [-1, 1]) {
       const shoulder = new THREE.Group();
       shoulder.position.set(side * 0.215, 0.93, 0);
-      part(sharedGeo("shoulder", () => new THREE.SphereGeometry(0.072, MOBILE ? 6 : 12, MOBILE ? 5 : 10)), outfit, 0.01, shoulder);
-      part(capsule(0.052, 0.13, "arm"), outfit, -0.1, shoulder);
+      part(sharedGeo("shoulder", () => new THREE.SphereGeometry(0.072, MOBILE ? 6 : 12, MOBILE ? 5 : 10)), hoodie, 0.01, shoulder);
+      part(capsule(0.052, 0.13, "arm"), hoodie, -0.1, shoulder);
       const elbow = new THREE.Group();
       elbow.position.y = -0.2;
       part(capsule(0.045, 0.11, "forearm"), skin, -0.085, elbow);
@@ -198,8 +220,6 @@ class Wisp {
     const skull = part(sharedGeo("skull", () => new THREE.SphereGeometry(0.2, MOBILE ? 12 : 24, MOBILE ? 10 : 18)), skin, 0.01, this.head);
     skull.scale.set(0.96, 1.02, 0.9);
     skull.position.z = 0.02;
-    const style = info.hairStyle ?? 0;
-    const long = style === 1 || style === 2 || style === 3 || style === 6;
     const covered = style === 7 || style === 8;
     const segs = MOBILE ? 10 : 18;
     const crown = part(
@@ -272,6 +292,45 @@ class Wisp {
     smile.rotation.z = Math.PI;
     smile.rotation.x = -0.35;
     this.root.add(this.head);
+
+    // A luminous twin walks just beside them, the way the island art shows.
+    const ghost = new THREE.Group();
+    ghost.position.set(feminine ? -0.46 : 0.46, 0, -0.08);
+    const gpart = (geo: THREE.BufferGeometry, y: number, parent: THREE.Object3D, x = 0, z = 0) => {
+      const mesh = new THREE.Mesh(geo, ghostMat);
+      mesh.position.set(x, y, z);
+      mesh.castShadow = false;
+      parent.add(mesh);
+      return mesh;
+    };
+    for (const side of [-1, 1]) {
+      const hip = new THREE.Group();
+      hip.position.set(side * 0.085, 0.5, 0);
+      gpart(capsule(0.068, 0.15, "thigh"), -0.125, hip);
+      const knee = new THREE.Group();
+      knee.position.y = -0.25;
+      gpart(capsule(0.06, 0.15, "shin"), -0.12, knee);
+      gpart(sharedGeo("shoe", () => new THREE.BoxGeometry(0.12, 0.055, 0.2)), -0.24, knee, 0, 0.04);
+      hip.add(knee);
+      ghost.add(hip);
+      this.ghostLegs.push({ hip, knee });
+      const shoulder = new THREE.Group();
+      shoulder.position.set(side * 0.215, 0.93, 0);
+      gpart(capsule(0.052, 0.13, "arm"), -0.1, shoulder);
+      const elbow = new THREE.Group();
+      elbow.position.y = -0.2;
+      gpart(capsule(0.045, 0.11, "forearm"), -0.085, elbow);
+      shoulder.add(elbow);
+      ghost.add(shoulder);
+      this.ghostArms.push({ shoulder, elbow });
+    }
+    gpart(capsule(0.165, 0.22, "torso"), 0.78, ghost);
+    this.ghostHead = new THREE.Group();
+    this.ghostHead.position.y = 1.28;
+    gpart(sharedGeo("skull", () => new THREE.SphereGeometry(0.2, MOBILE ? 8 : 12, MOBILE ? 6 : 10)), 0.02, this.ghostHead);
+    if (!covered) gpart(sharedGeo("hair-crown" + (long ? "-long" : ""), () => new THREE.SphereGeometry(long ? 0.26 : 0.22, 8, 6)), long ? 0.1 : 0.08, this.ghostHead);
+    ghost.add(this.ghostHead);
+    this.root.add(ghost);
     this.group.add(this.root);
     // ground marker: soft shadow + ring in the person's colour
     const shadow = new THREE.Mesh(
@@ -476,6 +535,15 @@ class Wisp {
       this.head.rotation.y = THREE.MathUtils.lerp(this.head.rotation.y, want, Math.min(1, dt * 5));
     }
     this.head.rotation.x = Math.sin(t * 1.7 + this.phase) * 0.03;
+    this.ghostLegs.forEach((g, i) => {
+      g.hip.rotation.copy(this.legs[i].hip.rotation);
+      g.knee.rotation.copy(this.legs[i].knee.rotation);
+    });
+    this.ghostArms.forEach((g, i) => {
+      g.shoulder.rotation.copy(this.arms[i].shoulder.rotation);
+      g.elbow.rotation.copy(this.arms[i].elbow.rotation);
+    });
+    if (this.ghostHead) this.ghostHead.rotation.copy(this.head.rotation);
     const m = this.marker.material as THREE.MeshBasicMaterial;
     if (this.info.self) m.opacity = 0.65 + Math.sin(t * 3) * 0.25;
   }
