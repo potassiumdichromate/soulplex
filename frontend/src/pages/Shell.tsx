@@ -1,10 +1,10 @@
-import { useEffect, type ReactNode } from "react";
+import { lazy, Suspense, useEffect, type ReactNode } from "react";
 import { Globe2, Brain, Compass, Coffee, LineChart, Settings, ShieldCheck, LogOut } from "lucide-react";
 import { useStore } from "../store";
 import { Brand, Wisp } from "../ui";
 import { withWorld } from "../world/WorldCanvas";
 import { faceUrl, headUrl, bodyColors } from "../faces";
-import { SetupWizard } from "./SetupWizard";
+const SetupWizard = lazy(() => import("./SetupWizard").then((m) => ({ default: m.SetupWizard })));
 import { startIslandFeed, stopIslandFeed } from "../islandFeed";
 
 const NAV = [
@@ -79,7 +79,11 @@ export function Shell({ children }: { children: ReactNode }) {
         </div>
       </aside>
       <main className="stage">{children}</main>
-      {setup !== null && <SetupWizard start={setup} onClose={() => openSetup(null)} />}
+      {setup !== null && (
+        <Suspense fallback={null}>
+          <SetupWizard start={setup} onClose={() => openSetup(null)} />
+        </Suspense>
+      )}
     </div>
   );
 }

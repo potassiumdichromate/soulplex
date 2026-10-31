@@ -3,12 +3,16 @@
  * photo processing (crop, style, soft-focus public variant), all client-side.
  */
 
+import { LOOK_NAMES, castFor, presetById, PRESETS } from "./characters";
+
 export type FaceSpec = {
   skin: number; hair: number; hairColor: number; eyes: number; brows: number;
   mouth: number; facial: number; accessory: number; outfit: number;
+  look?: number; // 0 or missing: auto; 1-15: one of the cast's outfit styles (characters.ts)
 };
 export type FaceView =
   | { kind: "illustrated"; spec: Partial<FaceSpec> }
+  | { kind: "cast"; id: string } // one of the Soulplex cast (fictional members)
   | { kind: "photo"; image?: string; photo?: string; public?: string; locked?: boolean; style?: string; reveal?: string }
   | Record<string, never>;
 
@@ -25,7 +29,8 @@ export const OPTIONS: { key: keyof FaceSpec; label: string; choices: string[] }[
   { key: "mouth", label: "Mouth", choices: ["Smile", "Grin", "Calm"] },
   { key: "facial", label: "Facial hair", choices: ["None", "Beard", "Moustache"] },
   { key: "accessory", label: "Accessory", choices: ["None", "Glasses", "Bindi", "Earrings", "Flower"] },
-  { key: "outfit", label: "Outfit", choices: OUTFIT },
+  { key: "outfit", label: "Avatar colour", choices: OUTFIT },
+  { key: "look", label: "3D outfit style", choices: ["Auto", ...LOOK_NAMES] },
 ];
 
 /** Hair, eyes and accessories that read as the gender the person chose. */
@@ -45,7 +50,7 @@ export function defaultSpec(seed: string, gender?: string): FaceSpec {
   const eyes = man || !woman ? one([0, 2]) : one([0, 1, 2]);
   const facial = man ? one([0, 1, 1, 2]) : 0;
   const accessory = man || !woman ? one([0, 0, 1]) : one([0, 1, 2, 3, 4]);
-  return {
+  const base = {
     skin: roll() % 6,
     hair,
     hairColor: roll() % 7,
@@ -56,6 +61,9 @@ export function defaultSpec(seed: string, gender?: string): FaceSpec {
     accessory,
     outfit: roll() % 6,
   };
+  // people without a designed face are dressed as one of the cast (one that suits their gender), hair and all
+  const { index, preset } = castFor(seed, man ? "m" : woman ? "f" : undefined);
+  return { ...base, ...preset.face, facial: preset.face.facial ?? 0, accessory: preset.face.accessory ?? 0, outfit: preset.outfit, look: index + 1 };
 }
 
 function full(spec: Partial<FaceSpec>, seed = "x"): FaceSpec {
@@ -154,6 +162,7 @@ export const svgUrl = (svg: string) => "data:image/svg+xml;charset=utf-8," + enc
 /** One image URL for any face, with a deterministic illustrated fallback. */
 export function faceUrl(face: FaceView | undefined | null, seed: string, hue: number, gender?: string): string {
   const f = (face ?? {}) as any;
+  if (f.kind === "cast" && presetById(f.id)?.art) return presetById(f.id)!.art!.face;
   if (f.kind === "photo") {
     const img = f.image ?? f.photo;
     if (img) return img;
@@ -165,6 +174,7 @@ export function faceUrl(face: FaceView | undefined | null, seed: string, hue: nu
 /** The face for a 3D head: illustrated faces drop the badge background; photos stay as they are. */
 export function headUrl(face: FaceView | undefined | null, seed: string, hue: number, gender?: string): string {
   const f = (face ?? {}) as any;
+  if (f.kind === "cast" && presetById(f.id)?.art) return presetById(f.id)!.art!.face;
   if (f.kind === "photo" && (f.image ?? f.photo)) return f.image ?? f.photo;
   const spec = f.kind === "illustrated" ? { ...defaultSpec(seed, gender), ...f.spec } : defaultSpec(seed, gender);
   return svgUrl(avatarSVG(spec, hue, seed, true));
@@ -265,16 +275,26 @@ export function softFocus(base: HTMLCanvasElement, hue: number) {
 
 export const toJpeg = (c: HTMLCanvasElement) => c.toDataURL("image/jpeg", 0.84);
 
-/** Colours for the 3D body, matching the face (head covering counts as "hair"). */
-export function bodyColors(face: FaceView | undefined | null, seed: string, hue: number, gender?: string) {
+/** Colours for the 3D body, matching the face (head covering counts as "hair"), plus the
+ *  full spec so the 3D character can sculpt the same eyes, brows, mouth and hairstyle.
+ *  Photo faces have no spec: the photo is shown on the head instead. */
+export function bodyColors(face: FaceView | undefined | null, seed: string, hue: number, gender?: string): { skin: string; hair: string; outfit: string; hairStyle?: number; spec?: FaceSpec } {
   const f = (face ?? {}) as any;
   if (f.kind === "photo") return { skin: "#c99272", hair: "#2b1d18", outfit: `hsl(${hue}, 70%, 58%)` };
-  const s = { ...defaultSpec(seed, gender), ...(f.kind === "illustrated" ? f.spec : {}) } as FaceSpec;
+  const cp = f.kind === "cast" ? presetById(f.id) : undefined;
+  if (cp) {
+    // a cast member: the 3D character is dressed and styled exactly like their character sheet
+    const spec = { ...defaultSpec(seed, gender), ...cp.face, facial: cp.face.facial ?? 0, accessory: cp.face.accessory ?? 0, skin: cp.art?.skin ?? 1, outfit: cp.outfit, look: PRESETS.indexOf(cp) + 1 } as FaceSpec;
+    return { skin: SKIN[spec.skin], hair: HAIR_COLOR[spec.hairColor] ?? HAIR_COLOR[0], outfit: OUTFIT[spec.outfit], spec };
+  }
+  // a designed face without a chosen outfit style gets one that suits its hairstyle ("auto")
+  const s = { ...defaultSpec(seed, gender), facial: 0, ...(f.kind === "illustrated" ? { look: 0, ...f.spec } : {}) } as FaceSpec;
   const covered = s.hair === 7 || s.hair === 8;
   return {
     skin: SKIN[s.skin] ?? SKIN[2],
     hair: covered ? OUTFIT[s.outfit] : HAIR_COLOR[s.hairColor] ?? HAIR_COLOR[0],
     hairStyle: s.hair,
     outfit: OUTFIT[s.outfit] ?? OUTFIT[0],
+    spec: s,
   };
 }

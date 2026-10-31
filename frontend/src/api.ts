@@ -55,8 +55,6 @@ export type User = {
   synthetic: boolean;
   role: string;
   memory_version: number;
-  /** This account has a Hello Mind. Private chat and dates use it. */
-  mind_ready?: boolean;
 };
 export type Memory = {
   id: string;

@@ -3,6 +3,7 @@ from pathlib import Path
 from contextlib import asynccontextmanager
 from typing import Literal
 from fastapi import FastAPI, HTTPException, Request, Response, Depends, BackgroundTasks
+from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import JSONResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field, ConfigDict
@@ -57,6 +58,8 @@ app = FastAPI(
     docs_url="/api/docs" if not PRODUCTION else None,
     openapi_url="/api/openapi.json",
 )
+# compress text responses (JS, CSS, HTML, JSON): roughly 3x less to download on slow networks
+app.add_middleware(GZipMiddleware, minimum_size=800, compresslevel=6)
 
 
 BODY_CAPS = {"/api/transcribe": 8 * 1024 * 1024, "/api/face": 300_000, "/api/about": 16_000}
@@ -97,6 +100,13 @@ async def security_headers(request, call_next):
     )
     if request.url.path.startswith("/api/"):
         response.headers["Cache-Control"] = "no-store"
+    elif request.url.path.startswith("/models/") and request.url.path.endswith(".glb"):
+        response.headers["Cache-Control"] = "public, max-age=604800"
+    elif request.url.path.startswith("/assets/"):
+        # file names contain a content hash, so browsers can keep them for a year
+        response.headers["Cache-Control"] = "public, max-age=31536000, immutable"
+    elif request.url.path in ("/", "/index.html"):
+        response.headers["Cache-Control"] = "no-cache"
     if PRODUCTION:
         response.headers["Strict-Transport-Security"] = (
             "max-age=31536000; includeSubDomains"
@@ -1613,6 +1623,9 @@ app.include_router(studio_router)
 static = Path(os.getenv("STATIC_DIR", "../frontend/dist"))
 if static.exists():
     app.mount("/assets", StaticFiles(directory=static / "assets"), name="assets")
+    if (static / "models").exists():
+        # 3D character models (GLB) and their models.json manifest
+        app.mount("/models", StaticFiles(directory=static / "models"), name="models")
 
     @app.get("/")
     def home():
@@ -1624,6 +1637,15 @@ if static.exists():
         if not icon.exists():
             raise HTTPException(404)
         return FileResponse(icon, media_type="image/jpeg")
+
+    PUBLIC_FILES = {"favicon.png", "apple-touch-icon.png", "icon-192.png", "icon-512.png", "manifest.webmanifest", "EelmAPbh_400x400.jpg"}
+
+    @app.get("/{name}")
+    def public_file(name: str):
+        """Logo icons and the web-app manifest (for "Add to home screen")."""
+        if name in PUBLIC_FILES and (static / name).exists():
+            return FileResponse(static / name, headers={"Cache-Control": "public, max-age=86400"})
+        raise HTTPException(404)
 
 
 @app.post("/api/transcribe")

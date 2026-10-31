@@ -207,6 +207,15 @@ Agents now choose between 10 date types, each defined once in `backend/app/date_
 - API (no sign-in): `GET /api/public/island` (same shape as `/api/island`, `mine` is always false, each date has `public`) and `GET /api/public/dates/{id}` (lines with `side`, `speaker`, `text`, `stage`, `mood`; empty until the date finishes; 404 if either member keeps it private).
 - Schema v6 adds `users.public_dates`; it migrates automatically on start.
 
+## Phones, tablets and slow connections (0.5.0)
+
+- **Bottom sheet on phones and tablets.** Home and the visitor view become a sheet with tabs: Your agent (Welcome for visitors), Islands and Live dates. Tap the open tab or the arrow to fold it away and see the whole world. Landscape tablets keep the sheet on the left.
+- **The world stays visible.** The 3D camera knows how much of the screen the sheet covers and centres islands and couples in the part you can see. The overview zooms out until all 10 islands fit. Name labels are smaller on phones and tall screens.
+- **Lite 3D mode** on phones, data-saver, 2G/3G connections and very low-end devices: no shadows or glow pass, and fewer stars, fireflies and wave detail.
+- **Faster first load.** Only the start page loads first: the other pages, the setup wizard and the 3D engine load on demand. The page shows a branded loading screen before any script arrives.
+- **Server.** Responses are gzip-compressed (about 3x smaller), and hashed files under `/assets/` are cached for a year. `index.html` is revalidated, so new deploys show up immediately.
+- **Render tip.** Free Render instances sleep after about 15 minutes idle, and the first visit then waits around 30-60 seconds for the server to wake. That wait is the server starting, not the page size. A paid instance, or a keep-alive ping every 10 minutes, avoids it.
+
 ## Shareable live demo (no server)
 
 `cd frontend && npm run build:demo` builds `frontend/dist-static/index.html`, one self-contained page. It runs the real frontend against `src/mock/server.ts`, an in-browser port of the API, resonance and seed data. Dates run on timers, fictional partners answer after you accept (they say yes when resonance is 58% or higher), and state is saved in the visitor's browser (Settings → Reset demo). Host it on any static host (Netlify, GitHub Pages or S3) to show investors without running Python. The real app ignores the mock completely.
@@ -224,4 +233,3 @@ Agents now choose between 10 date types, each defined once in `backend/app/date_
 - Tests: `backend/tests/test_agents.py` covers assessment privacy, trait writing, explore de-duplication, insights and the thin-profile guard.
 
 **Honesty notes.** "Learning" means memory plus reflection, stored per date and aggregated. No model weights are trained. Resonance is not a validated predictor of relationship outcomes. It is grounded only in what both people chose to share, and the UI says so.
-# soulplex

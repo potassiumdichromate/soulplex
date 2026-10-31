@@ -1,8 +1,9 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Send, Brain, Check, ChevronRight, Sparkles, MousePointerClick, Map as MapIcon } from "lucide-react";
 import { api, VENUES } from "../api";
 import { useIslandActivity, placeOf } from "../islandFeed";
 import { IslandGrid, IslandCard, LiveDates } from "./LiveDates";
+import { SheetTabs, useSheetInsets } from "./SheetTabs";
 import { useStore } from "../store";
 import { Wisp, Meter, Typing, timeAgo } from "../ui";
 import { withWorld } from "../world/WorldCanvas";
@@ -71,6 +72,14 @@ export function Home() {
   const d = useIslandActivity();
   const [island, setIsland] = useState<string | null>(null);
   const [sel, setSel] = useState<string | null>(null);
+  const [tab, setTab] = useState("agent"); // phone / tablet bottom-sheet tab
+  const [folded, setFolded] = useState(false);
+  const sheet = useRef<HTMLDivElement>(null);
+  useSheetInsets(sheet);
+  const openTab = (t: string) => {
+    setTab(t);
+    setFolded(false);
+  };
 
   // clicks in the 3D world
   useEffect(() => {
@@ -78,8 +87,12 @@ export function Home() {
       w.onIsland = (id) => {
         setSel(null);
         setIsland(id);
+        openTab("islands");
       };
-      w.onCouple = (id) => setSel(id);
+      w.onCouple = (id) => {
+        setSel(id);
+        openTab("live");
+      };
     });
     return () =>
       withWorld((w) => {
@@ -104,6 +117,7 @@ export function Home() {
 
   const pick = (id: string | null) => {
     setSel(id);
+    if (id) openTab("live");
     const l = d?.live.find((x) => x.id === id);
     if (l) setIsland(l.type);
   };
@@ -118,7 +132,18 @@ export function Home() {
       : "Wandering the island, waiting to meet someone";
 
   return (
-    <div className="home">
+    <div ref={sheet} className={"home tab-" + tab + (folded ? " folded" : "")}>
+      <SheetTabs
+        tab={tab}
+        onTab={openTab}
+        collapsed={folded}
+        onToggle={() => setFolded((f) => !f)}
+        tabs={[
+          ["agent", "Your agent"],
+          ["islands", "Islands"],
+          ["live", <>Live{d ? <em className="count">{d.active}</em> : null}</>],
+        ]}
+      />
       <div className="home-left">
         <div className="glass card agent-card">
           <div className="agent-top">

@@ -5,10 +5,12 @@ IMG = "data:image/jpeg;base64," + base64.b64encode(b"\xff\xd8real-photo").decode
 SOFT = "data:image/jpeg;base64," + base64.b64encode(b"\xff\xd8soft-photo").decode()
 
 
-def test_seed_people_have_illustrated_faces(client, login):
+def test_seed_people_have_faces(client, login):
     login("maya")
-    c = client.get("/api/candidates").json()["candidates"][0]
-    assert c["face"]["kind"] == "illustrated" and "skin" in c["face"]["spec"]
+    faces = [c["face"] for c in client.get("/api/candidates").json()["candidates"]]
+    kinds = {f["kind"] for f in faces}
+    assert kinds <= {"illustrated", "cast"} and "cast" in kinds
+    assert all(("skin" in f["spec"]) if f["kind"] == "illustrated" else f["id"] for f in faces)
 
 
 def test_illustrated_face_validation(client, login):

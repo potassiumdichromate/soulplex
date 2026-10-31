@@ -5,6 +5,7 @@ import { Typing } from "../ui";
 import { useStore } from "../store";
 import { Wisp } from "../ui";
 import { placeOf, stepTitle } from "../islandFeed";
+import { withWorld } from "../world/WorldCanvas";
 
 const ago = (t: number) => {
   const s = Math.max(0, Date.now() / 1000 - t);
@@ -49,6 +50,9 @@ export function LiveTalk({ l }: { l: LiveDate }) {
   const n = d?.lines.length ?? 0;
   useEffect(() => {
     box.current?.scrollTo({ top: box.current.scrollHeight, behavior: "smooth" });
+    // the newest line also floats over its speaker's head on the island
+    const last = d?.lines[n - 1];
+    if (last) withWorld((w) => w.say(l.id, last.side === "a" ? "a" : "b", last.text));
   }, [n]);
   if (err && !d) return <p className="fine">This conversation isn't available right now.</p>;
   const t = VENUES[l.type];
