@@ -24,6 +24,7 @@ type Store = {
   perform: (fn: () => Promise<void>, ok?: string) => Promise<boolean>;
   notify: (text: string, tone?: "ok" | "err") => void;
   toasts: Toast[];
+  dismiss: (id: number) => void;
   logout: () => Promise<void>;
   setup: number | null;
   openSetup: (step?: number | null) => void;
@@ -84,9 +85,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
   const notify = useCallback((text: string, tone: "ok" | "err" = "ok") => {
     const id = Date.now() + Math.random();
+    // notifications stay until the person swipes them away (or taps ×); at most three stack up
     setToasts((t) => [...t.slice(-2), { id, text, tone }]);
-    setTimeout(() => setToasts((t) => t.filter((x) => x.id !== id)), tone === "err" ? 6500 : 4200);
   }, []);
+  const dismiss = useCallback((id: number) => setToasts((t) => t.filter((x) => x.id !== id)), []);
 
   const load = useCallback(async () => {
     const e = epoch.current;
@@ -244,6 +246,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         perform,
         notify,
         toasts,
+        dismiss,
         logout,
         setup,
         openSetup,

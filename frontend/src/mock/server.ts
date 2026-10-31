@@ -21,6 +21,8 @@ type Msg = { id: Id; user_id: Id; role: string; content: string; created: number
 type Scene = {
   id: Id; a: Id; b: Id; venue: string; status: string; a_version: number; b_version: number;
   output: any; model: string; error: string; tokens: number; created: number; runAt: number; doneAt: number; waived_by?: string | null;
+  /** a finished, reviewed date from the agent's history: it stays readable after profiles change */
+  history?: boolean;
 };
 type Part = {
   scene_id: Id; user_id: Id; reviewed: boolean; contribution: string; decision: string; next_step: string;
@@ -36,7 +38,7 @@ import { DEMO_ABOUT } from "./demoAbout";
 import { FULL_TYPES, B_LINES } from "./dateTypesFull";
 import { aboutFacts, violates, signals, completion } from "../aboutLogic";
 
-const KEY = "soulplex-live-demo-v7";
+const KEY = "soulplex-live-demo-v8";
 const STEP: Record<string, number> = { marriage: 0, relationship: 1, dating: 2 };
 const INTENTS: Record<string, string> = { leila: "marriage", omar: "marriage", priya: "marriage", aditi: "marriage", karan: "marriage", daniel: "dating", sara: "dating" };
 
@@ -254,6 +256,12 @@ const PEOPLE: [string, string, number, string, string, string[], [string, string
   ["kabir", "Kabir", 31, "Delhi NCR", "man", M, [["interests", "Music festivals, cooking and cricket."], ["communication", "I like to discuss things calmly and listen first."], ["lifestyle", "Weekends with friends, Sunday mornings slow."]]],
 ];
 
+/** Fictional members who appear as the Soulplex cast (character-sheet art). */
+const CAST_FACES: Record<string, string> = {
+  maya: "creamsuit", sara: "pinkbomber", leila: "lavender", zara: "sheerlilac",
+  arjun: "midnight", karan: "lilachoodie", omar: "tealvarsity", vikram: "blackbomber",
+};
+
 const FACES: Record<string, Record<string, number>> = {
   maya: { skin: 2, hair: 1, hairColor: 1, eyes: 1, brows: 0, mouth: 0, facial: 0, accessory: 3, outfit: 0 },
   arjun: { skin: 3, hair: 0, hairColor: 0, eyes: 0, brows: 1, mouth: 1, facial: 1, accessory: 0, outfit: 3 },
@@ -285,6 +293,7 @@ function faceView(face: any, owner = false, revealed = false) {
     const open = face.reveal === "everyone" || revealed;
     return { kind: "photo", image: open ? face.photo : face.public, locked: !open };
   }
+  if (face.kind === "cast") return { kind: "cast", id: face.id };
   return { kind: "illustrated", spec: face.spec ?? {} };
 }
 
@@ -314,7 +323,7 @@ function seed(): DB {
       id: key + "-" + uid().slice(0, 6), email: key + "@demo.soulplex.local", password: "", name, age, city, gender, seeking,
       age_min: Math.max(21, age - 8), age_max: age + 9, intent: INTENTS[key] ?? "relationship", contact: key + "@example.invalid", discovery: key !== "operator",
       verified: true, email_verified: true, disabled: false, synthetic: true, public_dates: key !== "operator", role: key === "operator" ? "admin" : "member",
-      memory_version: 1, created: (t += 60), face: { kind: "illustrated", spec: FACES[key] ?? {} }, about: DEMO_ABOUT[key] ?? {},
+      memory_version: 1, created: (t += 60), face: CAST_FACES[key] ? { kind: "cast", id: CAST_FACES[key] } : { kind: "illustrated", spec: FACES[key] ?? {} }, about: DEMO_ABOUT[key] ?? {},
     };
     db.users.push(u);
     for (const [category, content] of facts) {
@@ -396,7 +405,7 @@ const actor = (u: User): Actor => ({
   id: u.id, name: u.name, about: u.about ?? {},
   facts: [...memories(u.id, true)].sort((x, y) => rank(x) - rank(y)).slice(0, 16).map((m) => ({ id: m.id, content: m.content, category: m.category })),
 });
-const stale = (s: Scene, a: User, b: User) => s.a_version !== a.memory_version || s.b_version !== b.memory_version;
+const stale = (s: Scene, a: User, b: User) => !s.history && (s.a_version !== a.memory_version || s.b_version !== b.memory_version);
 const bump = (u: User) => (u.memory_version += 1);
 function quota(key: string, limit: number) {
   const k = key + ":" + Math.floor(now() / 86400);
@@ -405,8 +414,42 @@ function quota(key: string, limit: number) {
 }
 const contactIn = (t: string) => CONTACT.test(t);
 
+/** Maya's agent has been on a few dates already: what it learned there carries into every new one. */
+const HISTORY: [string, string, number, string, string, string][] = [
+  ["omar", "walk", 26, "pass", "pass", "Thank you, this was kind. We want different paces of life, so I'll pass."],
+  ["vikram", "garden", 19, "pass", "accept", "He was lovely, but our plans for the next few years don't line up."],
+  ["daniel", "gallery", 12, "accept", "pass", "I'd like to meet. Maybe a gallery morning, then coffee?"],
+  ["karan", "bookshop", 5, "accept", "accept", "Yes! Let's swap favourite books over a slow coffee."],
+];
+function ensureHistory() {
+  const d = db as DB & { hist?: number };
+  if (d.hist) return;
+  d.hist = 1;
+  const maya = db.users.find((u) => u.email.startsWith("maya@"));
+  if (!maya) return;
+  for (const [key, venue, daysAgo, mine, theirs, words] of HISTORY) {
+    const p = db.users.find((u) => u.email.startsWith(key + "@"));
+    if (!p) continue;
+    const t = now() - daysAgo * 86400;
+    const aa = actor(maya), bb = actor(p);
+    const out: any = runDialogue(venue, aa, bb);
+    out.assessment = assess(aa, bb, out.dialogue);
+    const sc: Scene = {
+      id: uid(), a: p.id, b: maya.id, venue, status: "completed", a_version: p.memory_version, b_version: maya.memory_version,
+      output: out, model: "deterministic-demo", error: "", tokens: 0, created: t, runAt: t, doneAt: t, waived_by: null, history: true,
+    };
+    db.scenes.push(sc);
+    db.parts.push({ scene_id: sc.id, user_id: maya.id, reviewed: true, contribution: words, decision: mine, next_step: "public_cafe", feedback: {} });
+    db.parts.push({
+      scene_id: sc.id, user_id: p.id, reviewed: true, decision: theirs, next_step: "public_cafe", feedback: {},
+      contribution: theirs === "accept" ? "I enjoyed this a lot. I'd love to meet in person." : "Thank you, this was kind. I don't think we're the right fit.",
+    });
+  }
+}
+
 /** Simulated worker + simulated partners. Runs lazily on every request. */
 function tick() {
+  ensureHistory();
   const t = now();
   for (const s of db.scenes) {
     if (s.status === "queued" && t >= s.runAt) s.status = "running";

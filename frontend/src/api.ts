@@ -55,8 +55,6 @@ export type User = {
   synthetic: boolean;
   role: string;
   memory_version: number;
-  /** This account has a Hello Mind. Private chat and dates use it. */
-  mind_ready?: boolean;
 };
 export type Memory = {
   id: string;
@@ -163,10 +161,6 @@ export type Experience = {
   other: { contribution: string; decision: string; next_step: string };
   mutual: boolean;
   contact: string | null;
-  /** True when the date score is high enough to offer a real connection. */
-  can_connect?: boolean;
-  match_line?: number;
-  mind_ready?: boolean;
 };
 export type Insights = {
   knowledge: number;

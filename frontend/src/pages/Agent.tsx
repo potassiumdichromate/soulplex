@@ -170,18 +170,13 @@ function AddTrait() {
 }
 
 function Interview() {
-  const { messages, perform, load, mode, notify, busy, user } = useStore();
+  const { messages, perform, load, mode, notify, busy } = useStore();
   const [draft, setDraft] = useState("");
   const [sending, setSending] = useState("");
   const end = useRef<HTMLDivElement>(null);
   useEffect(() => end.current?.scrollIntoView({ behavior: "smooth", block: "nearest" }), [messages.length, sending]);
   return (
     <div className="interview">
-      {user?.mind_ready && (
-        <p className="fine mind-note">
-          This is a private chat with your agent. A new memory still waits for your approval before it can be used on a date.
-        </p>
-      )}
       <div className="chat">
         {messages.map((m, i) => (
           <div key={m.id ?? i} className={"bubble " + m.role}>
@@ -218,7 +213,7 @@ function Interview() {
       >
         <textarea
           aria-label="Your answer"
-          placeholder={user?.mind_ready ? "Talk with your agent…" : "Answer in your own words…"}
+          placeholder="Answer in your own words…"
           value={draft}
           maxLength={2000}
           onChange={(e) => setDraft(e.target.value)}
@@ -293,7 +288,7 @@ export function Agent() {
           <ListChecks size={16} /> Traits <b>{approved.length}</b>
         </button>
         <button role="tab" aria-selected={tab === "chat"} className={tab === "chat" ? "on" : ""} onClick={() => setTab("chat")}>
-          <MessageCircle size={16} /> {user?.mind_ready ? "My agent" : "Interview"}
+          <MessageCircle size={16} /> Interview
         </button>
         <button role="tab" aria-selected={tab === "review"} className={tab === "review" ? "on" : ""} onClick={() => setTab("review")}>
           <Inbox size={16} /> To review {proposals.length > 0 && <b className="hot">{proposals.length}</b>}

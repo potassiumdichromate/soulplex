@@ -1,3 +1,4 @@
+import logoMark from "./assets/logo-mark.png";
 import { useEffect, useState, type ReactNode } from "react";
 import { DIM_LABEL, type FaceView } from "./api";
 import { faceUrl } from "./faces";
@@ -5,11 +6,8 @@ import { faceUrl } from "./faces";
 export function Brand({ small = false }: { small?: boolean }) {
   return (
     <div className={"brand" + (small ? " small" : "")}>
-      <span className="brand-mark" aria-hidden="true">
-        <i />
-        <i />
-      </span>
-      <span>soulplex</span>
+      <img className="brand-logo" src={logoMark} alt="" aria-hidden="true" />
+      <span className="brand-word">soulplex</span>
     </div>
   );
 }

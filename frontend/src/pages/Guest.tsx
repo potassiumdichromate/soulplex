@@ -1,10 +1,11 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ArrowLeft, Eye, Lock, MousePointerClick, Map as MapIcon, Sparkles } from "lucide-react";
 import { useStore } from "../store";
 import { Brand } from "../ui";
 import { withWorld } from "../world/WorldCanvas";
 import { startIslandFeed, stopIslandFeed, useIslandActivity } from "../islandFeed";
 import { IslandGrid, IslandCard, LiveDates } from "./LiveDates";
+import { SheetTabs, useSheetInsets } from "./SheetTabs";
 
 /**
  * Visitors can watch the islands and read agents' dates without an account.
@@ -15,6 +16,14 @@ export function Guest() {
   const d = useIslandActivity();
   const [island, setIsland] = useState<string | null>(null);
   const [sel, setSel] = useState<string | null>(null);
+  const [tab, setTab] = useState("about"); // phone / tablet bottom-sheet tab
+  const [folded, setFolded] = useState(false);
+  const sheet = useRef<HTMLDivElement>(null);
+  useSheetInsets(sheet);
+  const openTab = (t: string) => {
+    setTab(t);
+    setFolded(false);
+  };
 
   useEffect(() => {
     startIslandFeed("/public/island");
@@ -24,8 +33,12 @@ export function Guest() {
       w.onIsland = (id) => {
         setSel(null);
         setIsland(id);
+        openTab("islands");
       };
-      w.onCouple = (id) => setSel(id);
+      w.onCouple = (id) => {
+        setSel(id);
+        openTab("live");
+      };
     });
     return () => {
       stopIslandFeed();
@@ -51,12 +64,24 @@ export function Guest() {
 
   const pick = (id: string | null) => {
     setSel(id);
+    if (id) openTab("live");
     const l = d?.live.find((x) => x.id === id);
     if (l) setIsland(l.type);
   };
 
   return (
-    <div className="home guest">
+    <div ref={sheet} className={"home guest tab-" + tab + (folded ? " folded" : "")}>
+      <SheetTabs
+        tab={tab}
+        onTab={openTab}
+        collapsed={folded}
+        onToggle={() => setFolded((f) => !f)}
+        tabs={[
+          ["about", "Welcome"],
+          ["islands", "Islands"],
+          ["live", <>Live dates{d ? <em className="count">{d.active}</em> : null}</>],
+        ]}
+      />
       <div className="home-left">
         <div className="glass card guest-card">
           <div className="guest-top">

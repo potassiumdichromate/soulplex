@@ -16,7 +16,6 @@ import {
   PartyPopper,
   UserRound,
   Search,
-  Send,
 } from "lucide-react";
 import { api, VENUES, DIM_LABEL, MODE_LABEL, type Experience } from "../api";
 import { useStore } from "../store";
@@ -355,12 +354,8 @@ function Resonance({ s }: { s: Experience }) {
           <h3>How your agents connected</h3>
           <p className="fine">
             Based only on what you both chose to share.{" "}
-            {a.method === "minds"
-              ? "Scored by a separate Mind that did not go on the date. "
-              : a.method !== "model"
-                ? "Scored with transparent keyword matching (demo). "
-                : ""}
-            A conversation aid, not a verdict.
+            {a.method !== "model" && "Scored with transparent keyword matching (demo). "}A conversation aid, not a
+            verdict.
           </p>
           {a.shared.length > 0 && (
             <div className="chips">
@@ -434,70 +429,6 @@ function Resonance({ s }: { s: Experience }) {
   );
 }
 
-function HumanChat({ sceneId, partner }: { sceneId: string; partner: string }) {
-  const { perform, busy } = useStore();
-  const [lines, setLines] = useState<{ id: string; mine: boolean; text: string }[]>([]);
-  const [text, setText] = useState("");
-  const end = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    let stop = false;
-    const run = async () => {
-      try {
-        const rows = await api<{ id: string; mine: boolean; text: string }[]>("/scenes/" + sceneId + "/messages");
-        if (!stop) setLines(rows);
-      } catch {
-        /* opens after both people accept */
-      }
-    };
-    run();
-    const timer = window.setInterval(run, 4000);
-    return () => {
-      stop = true;
-      window.clearInterval(timer);
-    };
-  }, [sceneId]);
-  useEffect(() => end.current?.scrollIntoView({ block: "nearest" }), [lines.length]);
-  return (
-    <div className="human-chat">
-      <h4>Talk with {partner}</h4>
-      <div className="human-thread">
-        {lines.length === 0 && <p className="fine">Say hello. This chat stays between the two of you.</p>}
-        {lines.map((line) => (
-          <div key={line.id} className={"bubble " + (line.mine ? "user" : "assistant")}>
-            {line.text}
-          </div>
-        ))}
-        <div ref={end} />
-      </div>
-      <form
-        className="composer"
-        onSubmit={(e) => {
-          e.preventDefault();
-          const value = text.trim();
-          if (!value) return;
-          perform(async () => {
-            await api("/scenes/" + sceneId + "/messages", "POST", { text: value });
-            setText("");
-            const rows = await api<{ id: string; mine: boolean; text: string }[]>("/scenes/" + sceneId + "/messages");
-            setLines(rows);
-          });
-        }}
-      >
-        <textarea
-          aria-label={"Message " + partner}
-          placeholder={"Message " + partner}
-          value={text}
-          maxLength={2000}
-          onChange={(e) => setText(e.target.value)}
-        />
-        <button className="btn primary sm" disabled={busy || text.trim().length < 1}>
-          <Send size={14} /> Send
-        </button>
-      </form>
-    </div>
-  );
-}
-
 function YourTurn({ s }: { s: Experience }) {
   const { perform, busy, loadScenes, user, go } = useStore();
   const [words, setWords] = useState(s.mine.contribution);
@@ -534,7 +465,6 @@ function YourTurn({ s }: { s: Experience }) {
             <span>{s.partner.name}'s contact</span>
             <strong>{s.contact}</strong>
           </div>
-          <HumanChat sceneId={s.id} partner={s.partner.name} />
           <p className="fine">Arrange the meeting yourselves. Meet in public and tell a friend where you'll be.</p>
           <details className="feedback">
             <summary>After you meet: help your agent learn (private)</summary>
@@ -598,7 +528,7 @@ function YourTurn({ s }: { s: Experience }) {
               <Coffee size={14} /> Public café
             </button>
           </div>
-          {!user!.contact && s.can_connect !== false && (
+          {!user!.contact && (
             <p className="warn-line">
               Add a private contact in{" "}
               <button className="link" onClick={() => go("settings")}>
@@ -607,18 +537,10 @@ function YourTurn({ s }: { s: Experience }) {
               before you can accept.
             </p>
           )}
-          {s.can_connect === false && (
-            <p className="warn-line">
-              This date scored {s.output.assessment?.score ?? "—"}%. A connection opens at {s.match_line ?? 70}% or
-              above. You can still pass.
-            </p>
-          )}
           <div className="decide">
-            {s.can_connect !== false && (
-              <button className="btn primary" disabled={busy || words.trim().length < 5} onClick={() => decide("accept")}>
-                <Heart size={16} /> I'd like to meet
-              </button>
-            )}
+            <button className="btn primary" disabled={busy || words.trim().length < 5} onClick={() => decide("accept")}>
+              <Heart size={16} /> I'd like to meet
+            </button>
             <button className="btn ghost" disabled={busy} onClick={() => decide("pending")}>
               Save words
             </button>
@@ -798,6 +720,12 @@ function DateDetail({ s }: { s: Experience }) {
     });
     return () => withWorld((w) => w.setDate(null));
   }, [s.id, s.venue, s.spot, going]);
+  // the line just revealed also appears as a speech bubble over its speaker on the island
+  useEffect(() => {
+    if (shown < 1 || shown > lines.length || !going) return;
+    const l = lines[shown - 1];
+    withWorld((w) => w.say(s.id, l.speaker_id === user!.id ? "a" : "b", l.text));
+  }, [shown, s.id, going]);
   useEffect(() => {
     const phase = s.status === "queued" ? "walking" : done ? "done" : "talking";
     withWorld((w) => w.updateDatePhase(phase, s.output.assessment?.score));

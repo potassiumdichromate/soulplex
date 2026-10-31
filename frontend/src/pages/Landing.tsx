@@ -5,6 +5,7 @@ import { useStore } from "../store";
 import { Brand, Wisp, Ring, Meter } from "../ui";
 import { withWorld } from "../world/WorldCanvas";
 import { faceUrl, headUrl, bodyColors, type FaceSpec } from "../faces";
+import howArt from "../assets/landing/how.webp";
 
 const L: Record<string, [number, Partial<FaceSpec>]> = {
   Maya: [330, { skin: 2, hair: 1, hairColor: 1, eyes: 1, brows: 0, mouth: 0, facial: 0, accessory: 3, outfit: 0 }],
@@ -43,6 +44,14 @@ export function Landing() {
         Object.entries(L).map(([name, [hue]], i) => ({ id: "l" + i, name, hue, face: headUrl(lface(name), name, hue), ...bodyColors(lface(name), name, hue) })),
       );
     });
+    // once the hero is scrolled away the islands are only a backdrop: let them redraw at half rate
+    const el = document.querySelector(".landing") as HTMLElement | null;
+    const onScroll = () => {
+      const y = el && el.scrollHeight > el.clientHeight + 5 ? el.scrollTop : scrollY;
+      withWorld((w) => (w.throttle = y > innerHeight * 0.6));
+    };
+    el?.addEventListener("scroll", onScroll, { passive: true });
+    addEventListener("scroll", onScroll, { passive: true });
     if (wantAuth) {
       setSheet(wantAuth);
       askAuth("");
@@ -52,6 +61,11 @@ export function Landing() {
       setSheet("reset");
       history.replaceState({}, "", location.pathname);
     }
+    return () => {
+      el?.removeEventListener("scroll", onScroll);
+      removeEventListener("scroll", onScroll);
+      withWorld((w) => (w.throttle = false));
+    };
   }, []);
 
   useEffect(() => {
@@ -102,9 +116,9 @@ export function Landing() {
       <header className="landing-top">
         <Brand />
         <nav>
-          <a href="#how">How it works</a>
-          <a href="#learn">What it learns</a>
-          <a href="#trust">Trust</a>
+          <a href="#how" className="nav-extra">How it works</a>
+          <a href="#learn" className="nav-extra">What it learns</a>
+          <a href="#trust" className="nav-extra">Trust</a>
           <button className="link" onClick={() => setGuest(true)}>
             Watch dates
           </button>
@@ -115,13 +129,12 @@ export function Landing() {
       </header>
 
       <section className="hero">
+        <div className="hero-copy">
         <span className="eyebrow">
           <Sparkles size={14} /> Matchmaking, with an agent that learns you
         </span>
         <h1>
-          Your agent goes on
-          <br />
-          the <em>first date.</em>
+          Your agent goes on the <em>first date.</em>
         </h1>
         <p className="lead">
           Teach your AI twin who you really are. It meets other people's agents for coffee, learns how you'd click,
@@ -132,7 +145,7 @@ export function Landing() {
             Create my agent <ArrowRight size={18} />
           </button>
           <button className="btn ghost lg watch-cta" onClick={() => setGuest(true)}>
-            <Eye size={18} /> Watch live dates, no sign-up
+            <Eye size={20} /> <span>Watch live dates, no sign-up</span> <ArrowRight size={18} className="end" />
           </button>
           {mode === "demo" && (
             <div className="demo-pick">
@@ -146,6 +159,8 @@ export function Landing() {
             </div>
           )}
         </div>
+        </div>
+        <div className="hero-side" aria-hidden="true" />
         <div className="hero-stats">
           <div>
             <strong>8</strong>
@@ -162,12 +177,16 @@ export function Landing() {
         </div>
       </section>
 
-      <section id="how" className="land-section">
-        <span className="eyebrow">How it works</span>
-        <h2>
-          Three steps from <em>"tell me about you"</em> to a real meeting.
-        </h2>
-        <div className="step-grid">
+
+      <section id="how" className="land-section land-card how">
+        <img className="how-art" src={howArt} alt="" aria-hidden="true" loading="lazy" decoding="async" />
+        <div className="how-head">
+          <span className="eyebrow">How it works</span>
+          <h2>
+            Three steps from <em>“tell me about you”</em> to a real meeting.
+          </h2>
+        </div>
+        <div className="lp-steps">
           <article className="glass step">
             <span className="step-n">01</span>
             <Brain />
@@ -198,7 +217,7 @@ export function Landing() {
         </div>
       </section>
 
-      <section id="learn" className="land-section split">
+      <section id="learn" className="land-section land-card split">
         <div>
           <span className="eyebrow">Your agent learns</span>
           <h2>
@@ -215,7 +234,7 @@ export function Landing() {
             <li>Growth tips grounded in what you actually shared</li>
           </ul>
         </div>
-        <div className="glass mock-insight">
+        <div className="glass mock-insight tilt">
           <div className="mock-head">
             <Wisp hue={330} size={44} self face={lface("Maya")} />
             <div>
@@ -247,12 +266,14 @@ export function Landing() {
         </div>
       </section>
 
-      <section id="trust" className="land-section">
-        <span className="eyebrow">Trust by design</span>
-        <h2>
-          Your agent is your identity here, <em>so you stay in control.</em>
-        </h2>
-        <div className="step-grid">
+      <section id="trust" className="land-section land-card trust">
+        <div className="trust-head">
+          <span className="eyebrow">Trust by design</span>
+          <h2>
+            Your agent is your identity here, <em>so you stay in control.</em>
+          </h2>
+        </div>
+        <div className="lp-steps trust-cards">
           <article className="glass step">
             <Eye />
             <h3>You approve its memory</h3>
@@ -269,6 +290,9 @@ export function Landing() {
             <p>Discovery opens after verification. Block, report, export or delete your data any time.</p>
           </article>
         </div>
+        <button className="btn primary lg trust-cta" onClick={() => setSheet("register")}>
+          Create my agent <ArrowRight size={18} />
+        </button>
         <footer className="land-foot">
           <Brand small />
           <span>Independent Web2 pilot · Dubai &amp; Delhi NCR · Demo uses fictional people.</span>

@@ -22,6 +22,7 @@ OPTIONS = {
     "facial": 3,
     "accessory": 5,
     "outfit": 6,
+    "look": 16,  # 0 auto, 1-15 the cast's 3D outfit styles
 }
 DATA_URL = re.compile(r"^data:image/(jpeg|png|webp);base64,[A-Za-z0-9+/=]+$")
 MAX_IMAGE = 120_000  # characters of base64, roughly 90 KB
@@ -59,4 +60,6 @@ def view(face, *, owner=False, revealed=False):
         }
     if face.get("kind") == "illustrated":
         return {"kind": "illustrated", "spec": face.get("spec", {})}
+    if face.get("kind") == "cast":  # fictional members drawn as the Soulplex cast
+        return {"kind": "cast", "id": face.get("id", "")}
     return {}
