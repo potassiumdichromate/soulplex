@@ -68,6 +68,7 @@ Test with your chosen model before going live: send a chat message, run one date
 | `MINDS_ALLOWED_SKILLS` | empty | Comma-separated Bazaar skill ids members may equip. Empty means none. |
 | `MINDS_MIN_COGNITION` | `1` | Below this balance, a date uses `AI_MODEL` or stops with a "top up" error. |
 | `MINDS_SSE` | `1` | Listen on the event stream. Set `0` only if the stream misbehaves; history polling then does the work. |
+| `MINDS_SYNC_DELAY` | `60` | Seconds after the last profile or fact change before the persona is re-sent to the Mind. A step-by-step form sends one persona, not one per step. Waits at most 5 minutes. |
 | `MINDS_MAX_CONCURRENCY` / `MINDS_MAX_STREAMS` | `8` / `16` | Per-process limits on calls and open streams. |
 | `MINDS_MAX_RETRIES` | `3` | Retries for 429 anywhere, 502/503/504 on reads, 409 on send. |
 | `MINDS_BREAKER_THRESHOLD` / `MINDS_BREAKER_COOLDOWN` | `5` / `30` | Failures before the circuit opens, and seconds it stays open. |

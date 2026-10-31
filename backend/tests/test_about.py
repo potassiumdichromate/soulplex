@@ -52,6 +52,40 @@ def test_about_endpoint_generates_traits_and_filters(client, login):
     assert client.put("/api/about", json={"job": "call me 0501234567 now"}).status_code == 422
 
 
+def test_step_by_step_saves_screen_only_new_text(client, login, monkeypatch):
+    import app.main as main
+    from sqlalchemy import select
+    from app.db import SessionLocal, User
+
+    screened = []
+
+    async def count(text):
+        screened.append(text)
+
+    monkeypatch.setattr(main, "moderate", count)
+
+    def version():
+        with SessionLocal() as db:
+            return db.scalar(select(User.memory_version).where(User.email == "maya@demo.soulplex.local"))
+
+    login("maya")
+    assert client.put("/api/about", json=ABOUT).status_code == 200
+    assert sorted(screened) == sorted(["a nurse", "Temple in the morning, then dosa."])
+    first = version()
+    # The profile editor saves on every step. Unchanged steps cost nothing.
+    for _ in range(3):
+        assert client.put("/api/about", json=ABOUT).status_code == 200
+    assert len(screened) == 2 and version() == first
+    # A step that changes one choice and adds one prompt screens only the new prompt.
+    more = {**ABOUT, "drinking": "socially", "prompts": ABOUT["prompts"] + [{"id": "win", "answer": "Kind to waiters."}]}
+    assert client.put("/api/about", json=more).status_code == 200
+    assert screened[2:] == ["Kind to waiters."] and version() == first + 1
+    profile = client.get("/api/me").json()["user"]
+    fields = ("name", "age", "city", "gender", "seeking", "age_min", "age_max", "intent", "contact", "discovery")
+    assert client.put("/api/profile", json={k: profile[k] for k in fields}).status_code == 200
+    assert version() == first + 1
+
+
 def test_profile_signals_reach_resonance(client, login):
     login("maya")
     client.put("/api/about", json={**ABOUT, "family_plans": "want"})

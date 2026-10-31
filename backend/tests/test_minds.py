@@ -16,6 +16,7 @@ def fake(monkeypatch):
     server = FakeMinds()
     monkeypatch.setenv("MINDS_BUILDER_API_KEY", "test-builder-key")
     monkeypatch.setenv("MINDS_MAX_RETRIES", "3")
+    monkeypatch.setenv("MINDS_SYNC_DELAY", "0")
     monkeypatch.setattr(minds, "transport", server.transport())
     monkeypatch.setattr(minds, "_backoff", lambda attempt, hint=None: 0)
     minds._BREAKER.reset()
@@ -185,6 +186,29 @@ def test_withdrawing_a_fact_resends_the_persona_without_it(client, login, fake):
     sent = [c[2]["messageText"] for c in hits(fake, "POST", "/v1/messaging/message") if c[2]["alias"] == "soul-" + user.id]
     assert len(sent) == 2
     assert target["content"] in sent[0] and target["content"] not in sent[1]
+
+
+def test_a_burst_of_saves_sends_one_persona_after_it_settles(client, login, fake, monkeypatch):
+    login("maya")
+    _grant(client, True)
+    run(process_outbox())
+    user = _user("maya@demo.soulplex.local")
+    monkeypatch.setenv("MINDS_SYNC_DELAY", "60")
+    for job in ("a nurse", "a doctor", "a surgeon"):
+        assert client.put("/api/about", json={"job": job}).status_code == 200
+    with SessionLocal() as db:
+        tasks = db.scalars(select(MindTask).where(MindTask.kind == "sync_persona", MindTask.status == "pending")).all()
+        assert len(tasks) == 1 and tasks[0].next_at > tasks[0].updated + 50
+        assert tasks[0].next_at <= tasks[0].created + 300
+    run(process_outbox())
+    persona_alias = "soul-" + user.id
+    assert len([c for c in hits(fake, "POST", "/v1/messaging/message") if c[2]["alias"] == persona_alias]) == 1
+    with SessionLocal() as db:
+        db.execute(MindTask.__table__.update().values(next_at=0))
+        db.commit()
+    run(process_outbox())
+    sent = [c[2]["messageText"] for c in hits(fake, "POST", "/v1/messaging/message") if c[2]["alias"] == persona_alias]
+    assert len(sent) == 2 and "a surgeon" in sent[1]
 
 
 def test_transient_failures_are_rescheduled_not_lost(client, login, fake):

@@ -412,11 +412,16 @@ async def _attach_mind(db, user):
 
 
 def _queue_sync(user):
-    """Approved facts changed. The outbox re-sends the whole persona, so withdrawals reach the Mind too."""
+    """Approved facts changed. The outbox re-sends the whole persona, so withdrawals reach the Mind too.
+
+    The send waits MINDS_SYNC_DELAY seconds after the last change, so a step-by-step form sends one
+    persona at the end instead of one per step. Dates and chat read facts from the database, not
+    from the persona, so the wait never makes them use stale facts.
+    """
     if not minds_enabled() or not user or not user.mind_id:
         return
     with SessionLocal() as db:
-        enqueue_mind(db, user.id, "sync_persona")
+        enqueue_mind(db, user.id, "sync_persona", delay=float(os.getenv("MINDS_SYNC_DELAY", "60")))
         db.commit()
 
 
@@ -452,11 +457,18 @@ def profile(
         raise HTTPException(
             409, "An operator must verify your eligibility before discovery opens."
         )
-    for key, value in body.model_dump().items():
+    values = body.model_dump()
+    changed = any(getattr(u, key) != value for key, value in values.items())
+    for key, value in values.items():
         setattr(u, key, value)
     from .faces import apply_auto_face
 
     apply_auto_face(u)
+    if not changed:
+        # The profile editor saves on every step. An unchanged save must not start a new
+        # memory version, which would send the agent back to people it already met.
+        db.commit()
+        return own_profile(u)
     db.execute(
         update(User)
         .where(User.id == u.id)
@@ -483,10 +495,20 @@ async def set_about(
         about = clean(body)
     except ValueError as exc:
         raise HTTPException(422, str(exc))
-    texts = [p["answer"] for p in about.get("prompts", [])] + [about.get("job", ""), about.get("hometown", "")]
+    if about == (u.about or {}):
+        # The profile editor saves on every step, often with nothing new here.
+        return own_profile(u)
+
+    def texts_of(data):
+        return [p["answer"] for p in data.get("prompts", [])] + [data.get("job", ""), data.get("hometown", "")]
+
+    texts = texts_of(about)
     if any(contains_contact(t) for t in texts):
         raise HTTPException(422, "Keep contact details out of your profile. Use the private contact field.")
-    for t in [x for x in texts if x]:
+    # Saved text already passed screening. Each check is a model call on providers without a
+    # moderation endpoint, so screen only what is new.
+    screened = set(texts_of(u.about or {}))
+    for t in dict.fromkeys(x for x in texts if x and x not in screened):
         await moderate(t)
     db.rollback()
     u = me(request, db, True)

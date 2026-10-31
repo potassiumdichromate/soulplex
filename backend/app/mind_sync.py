@@ -26,10 +26,15 @@ log = logging.getLogger("soulplex.mind_sync")
 KINDS = ("awaken", "sync_persona", "set_enabled", "link_pair", "unlink_pair", "retire")
 MAX_ATTEMPTS = 8
 STUCK_AFTER = 600
+MAX_DEFER = 300
 
 
-def enqueue(db, user_id, kind, payload=None, coalesce=True):
-    """Add a task in the caller's transaction. Pending tasks of one kind per person coalesce."""
+def enqueue(db, user_id, kind, payload=None, coalesce=True, delay=0):
+    """Add a task in the caller's transaction. Pending tasks of one kind per person coalesce.
+
+    With a delay, each new request pushes a pending task back, so a burst of saves (a
+    step-by-step form) ends in one task. MAX_DEFER caps the wait for someone who keeps editing.
+    """
     if kind not in KINDS:
         raise ValueError("Unknown Mind task.")
     if not minds.enabled():
@@ -40,8 +45,11 @@ def enqueue(db, user_id, kind, payload=None, coalesce=True):
         if existing:
             existing.payload = payload or existing.payload or {}
             existing.updated = now()
+            if delay and existing.status == "pending":
+                settle = min(now() + delay, existing.created + MAX_DEFER)
+                existing.next_at = max(existing.next_at, settle)
             return existing
-    task = MindTask(user_id=user_id, kind=kind, payload=payload or {}, dedupe_key=key, next_at=now())
+    task = MindTask(user_id=user_id, kind=kind, payload=payload or {}, dedupe_key=key, next_at=now() + delay)
     try:
         with db.begin_nested():
             db.add(task)
