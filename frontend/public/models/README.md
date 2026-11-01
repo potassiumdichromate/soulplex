@@ -1,5 +1,7 @@
 # 3D character models
 
+What to build (art direction, glTF spec, modular outfits): see `docs/CHARACTER_MODELS.md`.
+
 Put GLB files here and list them in `models.json` by outfit look id
 (lavender, pinkbomber, creamsuit, lilachoodie, midnight, sheerlilac, tealvarsity,
 blackbomber, mintcardigan, butterpuffer, rosedenim, skytrack, coraloverhirt, plumcoat, sagehoodie):
