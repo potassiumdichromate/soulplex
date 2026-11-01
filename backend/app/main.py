@@ -1118,6 +1118,7 @@ def live_agent(u):
         "name": u.name.split()[0],
         "hue": int(hashlib.sha256(u.id.encode()).hexdigest()[:4], 16) % 360,
         "face": face_view(u.face),
+        "gender": u.gender,  # so the character on the island matches the person
     }
 
 

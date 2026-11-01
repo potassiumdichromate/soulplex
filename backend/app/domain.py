@@ -51,6 +51,7 @@ def public_profile(u, revealed=False):
         "city": u.city,
         "intent": u.intent,
         "synthetic": u.synthetic,
+        "gender": u.gender,  # the character on the island and in Discover matches the person
     }
 
 

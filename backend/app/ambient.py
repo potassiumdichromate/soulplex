@@ -30,6 +30,7 @@ def _agent(name: str, gender: str):
         "name": name,
         "hue": hue,
         "face": {"kind": "illustrated", "spec": spec_for(gender, "ambient:" + name)},
+        "gender": gender,
     }
 
 

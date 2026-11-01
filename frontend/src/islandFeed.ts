@@ -16,8 +16,8 @@ const agentInfo = (x: LiveAgent, seed: string) => ({
   id: seed,
   name: x.name,
   hue: x.hue,
-  face: headUrl(x.face ?? undefined, seed, x.hue),
-  ...bodyColors(x.face ?? undefined, seed, x.hue),
+  face: headUrl(x.face ?? undefined, seed, x.hue, x.gender),
+  ...bodyColors(x.face ?? undefined, seed, x.hue, x.gender),
 });
 
 async function refresh() {

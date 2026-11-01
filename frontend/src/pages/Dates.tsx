@@ -70,7 +70,7 @@ function DateRow({ s }: { s: Experience }) {
     <button className="drow" onClick={() => go("dates", s.id)}>
       <span className="pair">
         <Wisp hue={user!.hue} size={36} self face={user!.face} seed={user!.id} />
-        <Wisp hue={s.partner.hue} size={36} face={s.partner.face} seed={s.partner.id} />
+        <Wisp hue={s.partner.hue} size={36} face={s.partner.face} seed={s.partner.id} gender={s.partner.gender} />
       </span>
       <span className="drow-main">
         <strong>
@@ -336,7 +336,7 @@ function Process({ s, stage, lines }: { s: Experience; stage: number; lines: { s
           </span>
         </div>
         <div>
-          <Wisp hue={s.partner.hue} size={30} face={s.partner.face} seed={s.partner.id} />
+          <Wisp hue={s.partner.hue} size={30} face={s.partner.face} seed={s.partner.id} gender={s.partner.gender} />
           <span>
             <b>{s.partner.name}'s agent</b>
             <small>{state(s.partner.id)}</small>
@@ -533,7 +533,7 @@ function YourTurn({ s }: { s: Experience }) {
           />
           {s.other.contribution && (
             <div className="their-words">
-              <Wisp hue={s.partner.hue} size={22} face={s.partner.face} seed={s.partner.id} />
+              <Wisp hue={s.partner.hue} size={22} face={s.partner.face} seed={s.partner.id} gender={s.partner.gender} />
               <span>
                 <b>{s.partner.name} wrote:</b> {s.other.contribution}
               </span>
@@ -747,7 +747,7 @@ function DateDetail({ s }: { s: Experience }) {
         spot: s.spot ?? 0,
         mode: VENUES[s.venue]?.mode,
         a: { id: user!.id, name: user!.name, hue: user!.hue, self: true, face: headUrl(user!.face, user!.id, user!.hue, user!.gender), ...bodyColors(user!.face, user!.id, user!.hue, user!.gender) },
-        b: { id: s.partner.id, name: s.partner.name, hue: s.partner.hue, face: headUrl(s.partner.face, s.partner.id, s.partner.hue), ...bodyColors(s.partner.face, s.partner.id, s.partner.hue) },
+        b: { id: s.partner.id, name: s.partner.name, hue: s.partner.hue, face: headUrl(s.partner.face, s.partner.id, s.partner.hue, s.partner.gender), ...bodyColors(s.partner.face, s.partner.id, s.partner.hue, s.partner.gender) },
         phase: "walking",
       });
     });
@@ -774,7 +774,7 @@ function DateDetail({ s }: { s: Experience }) {
         <div className="pair big">
           <Wisp hue={user!.hue} size={56} self name={user!.name} face={user!.face} seed={user!.id} />
           <span className="thread" style={{ "--a": user!.hue, "--b": s.partner.hue } as React.CSSProperties} />
-          <Wisp hue={s.partner.hue} size={56} name={s.partner.name} face={s.partner.face} seed={s.partner.id} />
+          <Wisp hue={s.partner.hue} size={56} name={s.partner.name} face={s.partner.face} seed={s.partner.id} gender={s.partner.gender} />
         </div>
         <div>
           <span className="eyebrow">
@@ -804,7 +804,7 @@ function DateDetail({ s }: { s: Experience }) {
         <div className="waiting">
           <div className="orbit">
             <Wisp hue={user!.hue} size={30} self face={user!.face} seed={user!.id} />
-            <Wisp hue={s.partner.hue} size={30} face={s.partner.face} seed={s.partner.id} />
+            <Wisp hue={s.partner.hue} size={30} face={s.partner.face} seed={s.partner.id} gender={s.partner.gender} />
           </div>
           <h3>Invitation sent to {s.partner.name}</h3>
           <p className="fine">{s.partner.name} reviews invitations personally. Your agents meet as soon as they accept.</p>
@@ -834,7 +834,7 @@ function DateDetail({ s }: { s: Experience }) {
         <div className="waiting">
           <div className="orbit">
             <Wisp hue={user!.hue} size={30} self face={user!.face} seed={user!.id} />
-            <Wisp hue={s.partner.hue} size={30} face={s.partner.face} seed={s.partner.id} />
+            <Wisp hue={s.partner.hue} size={30} face={s.partner.face} seed={s.partner.id} gender={s.partner.gender} />
           </div>
           <h3>{s.status === "queued" ? "Your agents are walking over…" : "They're deep in conversation…"}</h3>
           <p className="fine">{v.blurb}</p>
@@ -856,7 +856,7 @@ function DateDetail({ s }: { s: Experience }) {
                   </div>
                 )}
                 <div className={"line " + (mine ? "mine" : "theirs")}>
-                  <Wisp hue={mine ? user!.hue : s.partner.hue} size={30} self={mine} face={mine ? user!.face : s.partner.face} seed={mine ? user!.id : s.partner.id} />
+                  <Wisp hue={mine ? user!.hue : s.partner.hue} size={30} self={mine} face={mine ? user!.face : s.partner.face} seed={mine ? user!.id : s.partner.id} gender={mine ? user!.gender : s.partner.gender} />
                   <div>
                     <small>
                       {mine ? "Your agent" : s.partner.name + "'s agent"}
@@ -870,7 +870,7 @@ function DateDetail({ s }: { s: Experience }) {
             })}
             {shown < lines.length && (
               <div className={"line " + (lines[shown].speaker_id === user!.id ? "mine" : "theirs")}>
-                <Wisp hue={lines[shown].speaker_id === user!.id ? user!.hue : s.partner.hue} size={30} face={lines[shown].speaker_id === user!.id ? user!.face : s.partner.face} seed={lines[shown].speaker_id === user!.id ? user!.id : s.partner.id} />
+                <Wisp hue={lines[shown].speaker_id === user!.id ? user!.hue : s.partner.hue} size={30} face={lines[shown].speaker_id === user!.id ? user!.face : s.partner.face} seed={lines[shown].speaker_id === user!.id ? user!.id : s.partner.id} gender={lines[shown].speaker_id === user!.id ? user!.gender : s.partner.gender} />
                 <div>
                   <Typing />
                 </div>

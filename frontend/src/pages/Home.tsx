@@ -179,7 +179,7 @@ export function Home() {
             <h3>💌 {invites.length === 1 ? "An invitation for you" : `${invites.length} invitations for you`}</h3>
             {invites.map((s) => (
               <button key={s.id} className="feed-item" onClick={() => go("dates", s.id)}>
-                <Wisp hue={s.partner.hue} size={36} face={s.partner.face} seed={s.partner.id} />
+                <Wisp hue={s.partner.hue} size={36} face={s.partner.face} seed={s.partner.id} gender={s.partner.gender} />
                 <span className="feed-text">
                   <strong>
                     {s.partner.name}'s agent · {VENUES[s.venue]?.name}
@@ -225,7 +225,7 @@ export function Home() {
               <button key={s.id} className="feed-item" onClick={() => go("dates", s.id)}>
                 <span className="pair">
                   <Wisp hue={user!.hue} size={30} self face={user!.face} seed={user!.id} />
-                  <Wisp hue={s.partner.hue} size={30} face={s.partner.face} seed={s.partner.id} />
+                  <Wisp hue={s.partner.hue} size={30} face={s.partner.face} seed={s.partner.id} gender={s.partner.gender} />
                 </span>
                 <span className="feed-text">
                   <strong>

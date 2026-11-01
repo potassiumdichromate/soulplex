@@ -36,7 +36,7 @@ export function Shell({ children }: { children: ReactNode }) {
     withWorld((w) =>
       w.setAgents([
         { id: user.id, name: user.name, hue: user.hue, self: true, face: headUrl(user.face, user.id, user.hue, user.gender), ...bodyColors(user.face, user.id, user.hue, user.gender) },
-        ...candidates.slice(0, 10).map((c) => ({ id: c.id, name: c.name, hue: c.hue, face: headUrl(c.face, c.id, c.hue), ...bodyColors(c.face, c.id, c.hue) })),
+        ...candidates.slice(0, 10).map((c) => ({ id: c.id, name: c.name, hue: c.hue, face: headUrl(c.face, c.id, c.hue, c.gender), ...bodyColors(c.face, c.id, c.hue, c.gender) })),
       ]),
     );
   }, [user?.id, user?.name, user?.hue, user?.gender, user?.face, candidates]);

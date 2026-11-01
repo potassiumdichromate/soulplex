@@ -374,7 +374,7 @@ const memories = (uid_: Id, shareable = false) =>
     .filter((m) => m.user_id === uid_ && m.status === "approved" && (!shareable || m.visibility === "shareable"))
     .sort((x, y) => y.updated - x.updated);
 const factData = (m: Mem) => ({ ...m });
-const publicProfile = (u: User, revealed = false) => ({ face: faceView(u.face, false, revealed), about: (({ dealbreakers, ...rest }) => rest)(u.about ?? {}), id: u.id, hue: hue(u.id), name: u.name, age: u.age, city: u.city, intent: u.intent, synthetic: u.synthetic });
+const publicProfile = (u: User, revealed = false) => ({ face: faceView(u.face, false, revealed), about: (({ dealbreakers, ...rest }) => rest)(u.about ?? {}), id: u.id, hue: hue(u.id), name: u.name, age: u.age, city: u.city, intent: u.intent, synthetic: u.synthetic, gender: u.gender });
 const ownProfile = (u: User) => ({
   ...publicProfile(u),
   face: faceView(u.face, true),
@@ -658,11 +658,9 @@ function listDates(u: User, q: URLSearchParams) {
 }
 
 /** Island-wide activity. The demo adds a clearly labelled simulated city on top of real demo data. */
-const SIM_NAMES = [
-  "Aanya", "Kabir", "Zara", "Vihaan", "Meera", "Omar", "Ishita", "Reyansh", "Layla", "Arnav", "Sana", "Dev",
-  "Noor", "Aditya", "Kiara", "Yusuf", "Tara", "Rohan", "Amira", "Neel", "Riya", "Imran", "Diya", "Karan",
-  "Hana", "Aarav", "Leela", "Samir", "Myra", "Farhan", "Anika", "Vikram", "Inaya", "Zayan", "Pooja", "Elias",
-];
+/* Most dates on Soulplex are between a man and a woman, so the simulated city is too. */
+const SIM_MEN = ["Kabir", "Vihaan", "Omar", "Reyansh", "Arnav", "Dev", "Aditya", "Yusuf", "Rohan", "Neel", "Imran", "Karan", "Aarav", "Samir", "Farhan", "Vikram", "Zayan", "Elias"];
+const SIM_WOMEN = ["Aanya", "Zara", "Meera", "Ishita", "Layla", "Sana", "Noor", "Kiara", "Tara", "Amira", "Riya", "Diya", "Hana", "Leela", "Myra", "Anika", "Inaya", "Pooja"];
 const hashStr = (x: string) => {
   let h = 2166136261;
   for (let i = 0; i < x.length; i++) h = Math.imul(h ^ x.charCodeAt(i), 16777619);
@@ -676,7 +674,7 @@ export const spotFor = (type: string, key: string) => hashStr(key) % (FULL_TYPES
  * deterministic, slowly changing simulation of a busy city (labelled "simulated" in the UI).
  */
 const liveAgent = (u: User) =>
-  u.discovery && !u.disabled ? { name: u.name.split(" ")[0], hue: hue(u.id), face: faceView(u.face) } : { name: "Private agent", hue: 260, face: null };
+  u.discovery && !u.disabled ? { name: u.name.split(" ")[0], hue: hue(u.id), face: faceView(u.face), gender: u.gender } : { name: "Private agent", hue: 260, face: null };
 
 const watchable = (a?: User, b?: User) => !!(a && b && a.public_dates && b.public_dates && a.discovery && b.discovery && !a.disabled && !b.disabled);
 
@@ -712,22 +710,23 @@ function liveDates(me: User | null) {
       const h = hashStr(`${type}-${j}-${cycle}`);
       const elapsed = t - began;
       if (h % 10 < 3 || elapsed > L * 0.82) return; // this spot is free for now
-      const [n1, n2] = simNames(h);
+      const [n1, n2, g1, g2] = simNames(h);
       live.push({
         id: `sim-${type}-${j}-${cycle}`, type, spot: j, status: "running", started: began, mine: false, public: true,
         step: Math.min(3, Math.floor(elapsed / ((L * 0.82) / 4))),
-        a: { name: n1, hue: (h >>> 3) % 360, face: null },
-        b: { name: n2, hue: (h >>> 11) % 360, face: null },
+        a: { name: n1, hue: (h >>> 3) % 360, face: null, gender: g1 },
+        b: { name: n2, hue: (h >>> 11) % 360, face: null, gender: g2 },
       });
     });
   });
   return live.sort((x, y) => Number(y.mine) - Number(x.mine) || x.started - y.started);
 }
 
-const simNames = (h: number) => {
-  const n1 = SIM_NAMES[h % SIM_NAMES.length];
-  const n2 = SIM_NAMES[(h >>> 8) % SIM_NAMES.length] === n1 ? SIM_NAMES[(h % SIM_NAMES.length + 7) % SIM_NAMES.length] : SIM_NAMES[(h >>> 8) % SIM_NAMES.length];
-  return [n1, n2];
+/** A simulated couple: one man and one woman (either may be listed first), with their genders. */
+const simNames = (h: number): [string, string, string, string] => {
+  const man = SIM_MEN[h % SIM_MEN.length];
+  const woman = SIM_WOMEN[(h >>> 8) % SIM_WOMEN.length];
+  return (h >>> 16) % 2 ? [man, woman, "man", "woman"] : [woman, man, "woman", "man"];
 };
 
 /** Fictional things simulated agents know about their (fictional) people. */
@@ -767,14 +766,14 @@ function publicDate(id: string) {
     const L = 150 + ((k * 7 + j * 13) % 5) * 15;
     const began = cycle * L - k * 17 - j * 29;
     const h = hashStr(`${type}-${j}-${cycle}`);
-    const [n1, n2] = simNames(h);
+    const [n1, n2, g1, g2] = simNames(h);
     const A = simActor("a", n1, h), B = simActor("b", n2, h >>> 5);
     const out = runDialogue(type, A, B);
     const elapsed = t - began;
     const shown = elapsed > L * 0.82 ? 8 : Math.min(8, 1 + Math.floor(elapsed / ((L * 0.82) / 8)));
     return {
       id, type, status: shown >= 8 ? "completed" : "running",
-      a: { name: n1, hue: (h >>> 3) % 360, face: null }, b: { name: n2, hue: (h >>> 11) % 360, face: null },
+      a: { name: n1, hue: (h >>> 3) % 360, face: null, gender: g1 }, b: { name: n2, hue: (h >>> 11) % 360, face: null, gender: g2 },
       lines: out.dialogue.slice(0, shown).map((l: any) => ({ side: l.speaker_id === "a" ? "a" : "b", speaker: (l.speaker_id === "a" ? n1 : n2) + "'s agent", text: l.text, stage: l.stage, mood: l.mood })),
     };
   }

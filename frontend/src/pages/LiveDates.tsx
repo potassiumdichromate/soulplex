@@ -71,7 +71,7 @@ export function LiveTalk({ l }: { l: LiveDate }) {
               </div>
             )}
             <div className={"talk-line " + x.side}>
-              <Wisp hue={who.hue} size={24} face={who.face} seed={l.id + ":" + x.side} />
+              <Wisp hue={who.hue} size={24} face={who.face} seed={l.id + ":" + x.side} gender={who.gender} />
               <div>
                 <small>
                   {x.speaker}
@@ -226,8 +226,8 @@ export function LiveDates({
             <div key={l.id} className={"live-row" + (on ? " on" : "") + (l.mine ? " mine" : "")} style={{ "--c": t.color } as React.CSSProperties}>
               <button className="live-main" onClick={() => onSelect(on ? null : l.id)} disabled={l.spot == null}>
                 <span className="pair">
-                  <Wisp hue={l.a.hue} size={30} face={l.a.face} seed={l.id + ":a"} />
-                  <Wisp hue={l.b.hue} size={30} face={l.b.face} seed={l.id + ":b"} />
+                  <Wisp hue={l.a.hue} size={30} face={l.a.face} seed={l.id + ":a"} gender={l.a.gender} />
+                  <Wisp hue={l.b.hue} size={30} face={l.b.face} seed={l.id + ":b"} gender={l.b.gender} />
                 </span>
                 <span className="live-text">
                   <strong>

@@ -303,6 +303,9 @@ export function bodyColors(face: FaceView | undefined | null, seed: string, hue:
   }
   // a designed face without a chosen outfit style gets one that suits its hairstyle ("auto")
   const s = { ...defaultSpec(seed, gender), facial: 0, ...(f.kind === "illustrated" ? { look: 0, ...f.spec } : {}) } as FaceSpec;
+  // no outfit style chosen: dress the character to match the person's gender, not a guess from the hairstyle
+  const fit = gender === "man" ? "m" : gender === "woman" ? "f" : undefined;
+  if (fit && !s.look) s.look = castFor(seed, fit).index + 1;
   const covered = s.hair === 7 || s.hair === 8;
   return {
     skin: SKIN[s.skin] ?? SKIN[2],

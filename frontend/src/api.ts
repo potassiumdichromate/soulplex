@@ -82,6 +82,7 @@ export type Candidate = {
   common: string[];
   reason: string;
   outside?: string[];
+  gender?: string;
 };
 export type Dimension = { name: string; score: number; note: string; known: boolean };
 export type Assessment = {
@@ -98,7 +99,7 @@ export type Assessment = {
   } | null;
 };
 export type Line = { speaker_id: string; speaker: string; text: string; fact_ids: string[]; stage?: number; mood?: string };
-export type LiveAgent = { name: string; hue: number; face?: FaceView | null };
+export type LiveAgent = { name: string; hue: number; face?: FaceView | null; gender?: string };
 /** A date happening right now somewhere on the islands (conversations are never included). */
 export type LiveDate = {
   id: string;

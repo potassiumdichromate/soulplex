@@ -26,7 +26,7 @@ export function ProfileSheet({ c, onClose }: { c: Candidate; onClose: () => void
           <X size={18} />
         </button>
         <div className="ps-head" style={{ "--h": c.hue } as React.CSSProperties}>
-          <Wisp hue={c.hue} size={110} name={c.name} face={c.face} seed={c.id} />
+          <Wisp hue={c.hue} size={110} name={c.name} face={c.face} seed={c.id} gender={c.gender} />
           <h2>
             {c.name}, {c.age}
           </h2>
@@ -77,7 +77,7 @@ function Card({ c, initialVenue }: { c: Candidate; initialVenue: string }) {
   return (
     <article className="person glass">
       <div className="person-top" style={{ "--h": c.hue } as React.CSSProperties}>
-        <Wisp hue={c.hue} size={76} name={c.name} face={c.face} seed={c.id} />
+        <Wisp hue={c.hue} size={76} name={c.name} face={c.face} seed={c.id} gender={c.gender} />
         <div>
           <h3>
             {c.name}, {c.age}

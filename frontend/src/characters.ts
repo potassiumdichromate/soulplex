@@ -166,14 +166,15 @@ export function presetFor(spec: { look?: number; hair?: number; facial?: number 
   if (spec?.look && spec.look >= 1 && spec.look <= PRESETS.length) return PRESETS[spec.look - 1];
   const hair = spec?.hair ?? 0;
   const fem = [1, 2, 6, 8].includes(hair) && !spec?.facial;
-  const pool = PRESETS.filter((p) => p.fit === "u" || p.fit === (fem ? "f" : "m"));
+  const pool = PRESETS.filter((p) => p.fit === (fem ? "f" : "m"));
   return pool[hashStr(seed) % pool.length];
 }
 
 /** For people without a designed face: a whole character, picked from the seed. */
 /** A cast look for someone without a designed face. With a gender, only looks that suit it are offered. */
 export function castFor(seed: string, fit?: "f" | "m") {
-  const pool = fit ? PRESETS.filter((p) => p.fit === fit || p.fit === "u") : PRESETS;
+  // men get men's looks and women get women's; unisex looks are for everyone else
+  const pool = fit ? PRESETS.filter((p) => p.fit === fit) : PRESETS;
   const pick = pool[hashStr(seed + ":cast") % pool.length];
   return { index: PRESETS.indexOf(pick), preset: pick };
 }
