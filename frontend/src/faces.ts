@@ -3,7 +3,7 @@
  * photo processing (crop, style, soft-focus public variant), all client-side.
  */
 
-import { LOOK_NAMES, castFor, presetById, PRESETS } from "./characters";
+import { LOOK_NAMES, castFor, presetById, presetFor, PRESETS } from "./characters";
 
 export type FaceSpec = {
   skin: number; hair: number; hairColor: number; eyes: number; brows: number;
@@ -17,8 +17,8 @@ export type FaceView =
   | Record<string, never>;
 
 export const SKIN = ["#f9d9c6", "#efbf9c", "#dca37c", "#bb7f58", "#8e5c3c", "#5f3b25"];
-/** Anime eye colours. The same seed gives the same colour in 2D avatars and 3D heads. */
-const IRIS = ["#3f7cff", "#8a5cff", "#c98a2c", "#2fb5a6", "#8a5a3a", "#e0559c", "#4f9a3a"];
+/** Natural eye colours, mostly browns. The same seed gives the same colour in 2D avatars and 3D heads. */
+const IRIS = ["#6b4226", "#5a3620", "#7a4e2a", "#4a2e1c", "#8a6a34", "#3f6f9e", "#4f7d4a", "#6b7380"];
 export function irisFor(seed: number) {
   return IRIS[seed % IRIS.length];
 }
@@ -120,40 +120,39 @@ export function avatarSVG(specIn: Partial<FaceSpec>, hue = 320, seed = "x", head
       p.push(curls.map(([x, y]) => `<circle cx="${x}" cy="${y}" r="8" fill="${hc}"/>`).join(""));
     } else p.push(front[s.hair] ?? front[0]);
   }
-  // anime features, matching the painted 3D faces
+  // film-style features, matching the painted 3D faces
   const iris = irisForSeed(seed);
-  const fem = s.eyes === 1;
-  p.push(`<defs><linearGradient id="ir" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${iris}" stop-opacity="1"/><stop offset="0" stop-color="#000" stop-opacity=".55"/><stop offset=".55" stop-color="${iris}"/><stop offset="1" stop-color="#fff" stop-opacity=".55"/></linearGradient></defs>`);
-  // brows: thin strokes
-  const by = s.brows === 2 ? 40.5 : 42;
-  const bw = s.brows === 1 ? 2.6 : 1.8;
-  p.push(`<path d="M44 ${by + 1.2} Q49.5 ${by - 2.2} 55.5 ${by + 0.6} M64.5 ${by + 0.6} Q70.5 ${by - 2.2} 76 ${by + 1.2}" stroke="${hc}" stroke-width="${bw}" fill="none" stroke-linecap="round" opacity=".9"/>`);
-  for (const [cx, side] of [[50, -1], [70, 1]] as const) {
-    const cy = 53.5;
-    const inner = cx - side * 7.6, outer = cx + side * 7.8;
-    const ry = s.eyes === 2 ? 6.2 : 7.4;
-    const shape = `M${inner} ${cy + 0.4} Q${inner + side * 1.6} ${cy - 8.6} ${cx} ${cy - 8.4} Q${outer - side * 1.6} ${cy - 8.4} ${outer} ${cy - 1.6} Q${outer - side * 0.8} ${cy + 6.8} ${cx} ${cy + 7} Q${inner + side * 1.2} ${cy + 6.6} ${inner} ${cy + 0.4}Z`;
-    const id = side < 0 ? "el" : "er";
-    p.push(`<clipPath id="${id}"><path d="${shape}"/></clipPath><path d="${shape}" fill="#fffdfd"/>`);
-    p.push(`<g clip-path="url(#${id})"><ellipse cx="${cx + side * 0.6}" cy="${cy + 1}" rx="5.4" ry="${ry}" fill="${iris}"/><ellipse cx="${cx + side * 0.6}" cy="${cy + 1}" rx="5.4" ry="${ry}" fill="url(#ir)"/>` +
-      `<ellipse cx="${cx + side * 0.6}" cy="${cy + 1.4}" rx="2.5" ry="3.6" fill="#140a14" opacity=".85"/><ellipse cx="${cx}" cy="${cy - 6.6}" rx="10" ry="3.4" fill="#3c1432" opacity=".2"/></g>`);
-    p.push(`<ellipse cx="${cx - side * 1.6}" cy="${cy - 2.4}" rx="2.2" ry="1.7" fill="#fff"/><circle cx="${cx + side * 2.4}" cy="${cy + 4}" r=".9" fill="#fff"/>`);
-    p.push(`<path d="M${inner - side * 0.2} ${cy + 0.6} Q${inner + side * 1.6} ${cy - 8.8} ${cx} ${cy - 8.6} Q${outer - side * 1.4} ${cy - 8.6} ${outer + side * (fem ? 2.4 : 1.2)} ${cy - (fem ? 3.6 : 2.4)}" stroke="#24141f" stroke-width="${fem ? 2.7 : 2.2}" fill="none" stroke-linecap="round" stroke-linejoin="round"/>`);
-    if (fem) p.push(`<path d="M${outer - side * 0.8} ${cy - 5} l${side * 2} -2 M${outer - side * 2.8} ${cy - 6.8} l${side * 1.8} -2.2" stroke="#24141f" stroke-width="1.3" stroke-linecap="round"/>`);
-    p.push(`<path d="M${cx + side * 0.6} ${cy + 6.9} Q${outer - side * 1.2} ${cy + 6.2} ${outer - side * 0.2} ${cy + 2}" stroke="#24141f" stroke-width=".8" fill="none" stroke-linecap="round"/>`);
-    if (s.eyes === 2) p.push(`<path d="M${cx - 5.6} ${cy + 5.6} Q${cx} ${cy + 3.6} ${cx + 5.6} ${cy + 5.6}" stroke="#24141f" stroke-width="1.1" fill="none" stroke-linecap="round"/>`);
+  const fem = presetFor(s, seed).fit === "f";
+  const brC = hc === "#dcb26c" || hc === "#a3a1ad" ? "#8a6a48" : hc;
+  const lip = fem ? "#c25866" : "#a9625f";
+  p.push(`<defs><radialGradient id="ir" cx="45%" cy="60%" r="60%"><stop offset="0" stop-color="#fff" stop-opacity=".45"/><stop offset=".55" stop-color="#fff" stop-opacity="0"/><stop offset="1" stop-color="#000" stop-opacity=".55"/></radialGradient></defs>`);
+  // brows: tapered, thick at the inner end
+  const bt = (fem ? 1.6 : 2.6) * (s.brows === 1 ? 1.2 : 1), ba = fem ? 3.2 : s.brows === 1 ? 1 : 2;
+  for (const [x, sd] of [[50, -1], [70, 1]] as const) {
+    const y = s.brows === 2 ? 42 : 43;
+    p.push(`<path d="M${x - sd * 7} ${y + bt * 0.5} Q${x - sd * 0.5} ${y - ba - bt * 0.6} ${x + sd * 8} ${y + 0.4} Q${x - sd * 0.5} ${y - ba + bt * 0.5} ${x - sd * 7} ${y + bt * 1.2}Z" fill="${brC}"/>`);
   }
-  // blush with little hatch lines, a tiny nose, a small mouth
-  p.push(`<ellipse cx="42" cy="64" rx="5.5" ry="3.4" fill="#ff6e96" opacity=".3"/><ellipse cx="78" cy="64" rx="5.5" ry="3.4" fill="#ff6e96" opacity=".3"/>` +
-    `<path d="M39.5 65.5 l1.6 -2.6 M42 65.5 l1.6 -2.6 M44.5 65.5 l1.6 -2.6 M75.5 65.5 l1.6 -2.6 M78 65.5 l1.6 -2.6 M80.5 65.5 l1.6 -2.6" stroke="#e6507a" stroke-width=".6" opacity=".6"/>`);
-  p.push(`<path d="M60 61.6 l.7 1.6" stroke="#000" stroke-opacity=".28" stroke-width="1.1" stroke-linecap="round"/>`);
-  p.push(
-    [
-      `<path d="M56.6 68.6 Q60 71.2 63.4 68.6" stroke="#24141f" stroke-width="1.3" fill="none" stroke-linecap="round"/>`,
-      `<path d="M55.8 67.6 Q60 67 64.2 67.6 Q63 72.6 60 72.6 Q57 72.6 55.8 67.6Z" fill="#7a2034" stroke="#24141f" stroke-width="1"/><path d="M57.2 71.4 Q60 69.6 62.8 71.4 Q61.6 72.4 60 72.4 Q58.4 72.4 57.2 71.4Z" fill="#ff7b8e"/><path d="M56.4 68 L63.6 68" stroke="#fff" stroke-width="1.1"/>`,
-      `<path d="M56.6 68.4 Q58.3 70.4 60 68.6 Q61.7 70.4 63.4 68.4" stroke="#24141f" stroke-width="1.2" fill="none" stroke-linecap="round"/>`,
-    ][s.mouth],
-  );
+  for (const [cx, sd] of [[50, -1], [70, 1]] as const) {
+    const cy = 52.5, w = 13, h = s.eyes === 2 ? 7 : 8.4;
+    const inner = cx - sd * w / 2, outer = cx + sd * w / 2;
+    const shape = `M${inner} ${cy + h * 0.1} C${inner + sd * w * 0.2} ${cy - h * 0.78} ${outer - sd * w * 0.28} ${cy - h * 0.72} ${outer} ${cy} C${outer - sd * w * 0.22} ${cy + h * 0.62} ${inner + sd * w * 0.25} ${cy + h * 0.6} ${inner} ${cy + h * 0.1}Z`;
+    const id = sd < 0 ? "el" : "er";
+    const ix = cx + sd * 0.4, iy = cy + 0.2, ir = h * 0.56;
+    p.push(`<clipPath id="${id}"><path d="${shape}"/></clipPath><path d="${shape}" fill="#fbf6f2"/>`);
+    p.push(`<g clip-path="url(#${id})"><circle cx="${ix}" cy="${iy}" r="${ir}" fill="${iris}"/><circle cx="${ix}" cy="${iy}" r="${ir}" fill="url(#ir)"/><circle cx="${ix}" cy="${iy}" r="${ir * 0.42}" fill="#0d0807"/><rect x="${cx - 9}" y="${cy - h}" width="18" height="${h * 0.55}" fill="#281414" opacity=".25"/></g>`);
+    p.push(`<ellipse cx="${ix - ir * 0.36}" cy="${iy - ir * 0.34}" rx="${ir * 0.3}" ry="${ir * 0.26}" fill="#fff"/><circle cx="${ix + ir * 0.38}" cy="${iy + ir * 0.36}" r="${ir * 0.12}" fill="#fff" opacity=".85"/>`);
+    p.push(`<path d="M${inner} ${cy + h * 0.1} C${inner + sd * w * 0.2} ${cy - h * 0.78} ${outer - sd * w * 0.28} ${cy - h * 0.72} ${outer + sd * (fem ? 1.3 : 0.4)} ${cy - (fem ? 1.2 : 0.3)}" stroke="#2a1814" stroke-width="${fem ? 1.3 : 1}" fill="none" stroke-linecap="round"/>`);
+    p.push(`<path d="M${inner + sd * w * 0.1} ${cy - h * 0.62 - 0.6} Q${cx} ${cy - h * 1.2} ${outer} ${cy - h * 0.45}" stroke="#000" stroke-opacity=".16" stroke-width=".6" fill="none"/>`);
+  }
+  // cheeks, nose, lips
+  p.push(`<ellipse cx="43" cy="62" rx="5" ry="3.2" fill="#ff7d8c" opacity="${fem ? 0.26 : 0.14}"/><ellipse cx="77" cy="62" rx="5" ry="3.2" fill="#ff7d8c" opacity="${fem ? 0.26 : 0.14}"/>`);
+  p.push(`<path d="M61.5 52 Q62.4 57 62.6 60" stroke="#000" stroke-opacity=".12" stroke-width="1" fill="none" stroke-linecap="round"/><ellipse cx="60" cy="61.6" rx="3.2" ry="1.4" fill="#000" opacity=".1"/><path d="M57.4 61 Q58.4 62.2 59.2 61.8 M62.6 61 Q61.6 62.2 60.8 61.8" stroke="#000" stroke-opacity=".3" stroke-width=".7" fill="none" stroke-linecap="round"/>`);
+  if (s.mouth === 1)
+    p.push(`<path d="M54 67 Q60 68.6 66 67 Q64.4 72.6 60 72.6 Q55.6 72.6 54 67Z" fill="#4d1418"/><path d="M54.4 66.8 Q60 68.4 65.6 66.8 L65.4 69 Q60 70.2 54.6 69Z" fill="#fbf8f2"/><path d="M55.4 71 Q60 74.4 64.6 71 Q60 73.2 55.4 71Z" fill="${lip}"/><path d="M54 67 Q60 68.6 66 67" stroke="${lip}" stroke-width=".9" fill="none" stroke-linecap="round"/>`);
+  else {
+    const mw = s.mouth === 2 ? 4.4 : 5.8;
+    p.push(`<path d="M${60 - mw * 0.85} 68.6 Q60 71.6 ${60 + mw * 0.85} 68.6 Q60 69.6 ${60 - mw * 0.85} 68.6Z" fill="${lip}"/><path d="M${60 - mw} 67.8 Q60 70 ${60 + mw} 67.8" stroke="#6e2a30" stroke-width=".9" fill="none" stroke-linecap="round"/>`);
+  }
   // facial hair
   if (s.facial === 1)
     p.push(`<path d="M36 58 Q37 86 60 87 Q83 86 84 58 Q80 74 70 75 Q60 70 50 75 Q40 74 36 58Z" fill="${hc}" opacity=".92"/><path d="M53 67 Q60 71 67 67" stroke="#7a2f3a" stroke-width="2" fill="none" stroke-linecap="round"/>`);

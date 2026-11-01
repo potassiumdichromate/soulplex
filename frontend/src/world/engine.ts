@@ -14,7 +14,7 @@ import { OutputPass } from "three/addons/postprocessing/OutputPass.js";
 import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
 import { DATE_TYPES } from "../dateTypes";
 import type { FaceSpec } from "../faces";
-import { buildCharacter, holoMaterial, charOptions } from "./character";
+import { buildCharacter, holoMaterial } from "./character";
 import { modelFor, findClip, instance } from "./models";
 import { presetFor } from "../characters";
 
@@ -645,7 +645,6 @@ export class SoulWorld {
   down = { x: 0, y: 0, t: 0 };
 
   constructor(public host: HTMLElement) {
-    charOptions.ink = !this.low;
     this.renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "high-performance" });
     const pr = Math.min(devicePixelRatio, this.low ? 1.25 : 1.6);
     this.renderer.setPixelRatio(pr);
