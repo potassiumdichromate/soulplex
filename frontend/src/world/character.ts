@@ -10,6 +10,8 @@ import * as THREE from "three";
 import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
 import { HAIR_COLOR, type FaceSpec } from "../faces";
 import { presetFor } from "../characters";
+import { facePatch } from "./animeFace";
+import { irisFor } from "../faces";
 
 export type Look = {
   seed: string;
@@ -68,7 +70,7 @@ class Kit {
       }
     }
   }
-  bake(lit: THREE.Material, glow: THREE.Material, geos: THREE.BufferGeometry[], shadow: boolean, depthOnly?: THREE.Material) {
+  bake(lit: THREE.Material, glow: THREE.Material, geos: THREE.BufferGeometry[], shadow: boolean, depthOnly?: THREE.Material, ink?: THREE.Material) {
     for (const [parent, list] of this.parts) {
       for (const kind of [false, true]) {
         const ps = list.filter((p) => p.glow === kind);
@@ -85,6 +87,7 @@ class Kit {
         const mesh = new THREE.Mesh(merged, kind ? glow : lit);
         mesh.castShadow = shadow && !kind;
         parent.add(mesh);
+        if (ink && !kind) parent.add(new THREE.Mesh(merged, ink));
         if (depthOnly) {
           // hologram: write depth first so only the outer shell glows, not every inner part
           const pre = new THREE.Mesh(merged, depthOnly);
@@ -98,22 +101,50 @@ class Kit {
 }
 
 /** A soft rim of light in the agent's colour, like the glow around the characters in the references. */
-function withRim(mat: THREE.MeshStandardMaterial, rim: THREE.Color, k: number) {
+function withRim<M extends THREE.MeshStandardMaterial | THREE.MeshToonMaterial>(mat: M, rim: THREE.Color, k: number, fill = 0.16): M {
   mat.onBeforeCompile = (sh) => {
     sh.uniforms.uRim = { value: rim };
     sh.uniforms.uRimK = { value: k };
+    sh.uniforms.uFill = { value: fill };
     sh.fragmentShader =
-      "uniform vec3 uRim;\nuniform float uRimK;\n" +
+      "uniform vec3 uRim;\nuniform float uRimK;\nuniform float uFill;\n" +
       sh.fragmentShader.replace(
         "#include <dithering_fragment>",
         `float rimF = 1.0 - clamp(dot(normal, normalize(vViewPosition)), 0.0, 1.0);
         gl_FragColor.rgb += uRim * pow(rimF, 3.0) * uRimK;
-        gl_FragColor.rgb += vColor.rgb * 0.16; // soft fill so faces stay bright at dusk
+        gl_FragColor.rgb += vColor.rgb * uFill; // soft fill so faces stay bright at dusk
         #include <dithering_fragment>`,
       );
   };
-  mat.customProgramCacheKey = () => "soulplex-rim";
+  mat.customProgramCacheKey = () => "soulplex-rim-" + mat.type;
   return mat;
+}
+
+/** Three flat bands of light: the cel-shaded anime look. */
+let toonRamp: THREE.DataTexture | null = null;
+function toonGradient() {
+  if (!toonRamp) {
+    toonRamp = new THREE.DataTexture(new Uint8Array([118, 118, 118, 255, 182, 182, 182, 255, 228, 228, 228, 255]), 3, 1, THREE.RGBAFormat);
+    toonRamp.minFilter = toonRamp.magFilter = THREE.NearestFilter;
+    toonRamp.needsUpdate = true;
+  }
+  return toonRamp;
+}
+
+/** Outlines cost a draw call per body part, so lite mode (phones, slow devices) turns them off. */
+export const charOptions = { ink: true };
+
+/** Dark ink outline: the back faces, pushed out a little. One material for every character. */
+let inkMat: THREE.MeshBasicMaterial | null = null;
+export function outlineMaterial() {
+  if (!inkMat) {
+    inkMat = new THREE.MeshBasicMaterial({ color: 0x2a1830, side: THREE.BackSide });
+    inkMat.onBeforeCompile = (sh) => {
+      sh.vertexShader = sh.vertexShader.replace("#include <begin_vertex>", "vec3 transformed = position + normal * 0.0085;");
+    };
+    inkMat.customProgramCacheKey = () => "soulplex-ink";
+  }
+  return inkMat;
 }
 
 /** Translucent, scan-lined hologram for the agent twin. */
@@ -376,59 +407,28 @@ export function buildCharacter(look: Look): Character {
   let mouth: THREE.Group | null = null;
   const extra: THREE.Mesh[] = [];
   if (spec) {
-    const ink = new THREE.Color("#2a1a22");
-    const iris = new THREE.Color(["#5a3524", "#3b2a20", "#6b4a2c", "#2f3f5c"][h % 4]);
+    // anime face: eyes, brows, blush, nose and mouth are painted on a patch over the face
     eyes = new THREE.Group();
-    eyes.position.set(0, 0.205, 0);
-    head.add(eyes);
-    for (const s of [-1, 1]) {
-      const x = s * 0.088;
-      if (spec.eyes === 2) {
-        kit.add(eyes, T(0.033, 0.0085, Math.PI, 8, 18), ink, [x, -0.008, 0.232]); // smiling closed eyes
-      } else {
-        kit.add(eyes, S(0.061, 24, 18), "#fbfbff", [x, 0, 0.21], { scale: [0.82, 1, 0.42] });
-        kit.add(eyes, S(0.041, 20, 14), iris, [x, -0.004, 0.231], { scale: [1, 1.08, 0.3] });
-        kit.add(eyes, S(0.023, 14, 10), "#120a10", [x, -0.004, 0.239], { scale: [1, 1, 0.3] });
-        kit.add(eyes, S(0.013, 10, 8), "#ffffff", [x + 0.015, 0.017, 0.244], { glow: true });
-        kit.add(eyes, S(0.006, 8, 6), "#ffffff", [x - 0.011, -0.016, 0.244], { glow: true });
-        kit.add(eyes, T(0.045, 0.006, Math.PI * 0.8, 6, 16), ink, [x, 0.004, 0.226], { rot: [0, 0, Math.PI * 0.1] }); // upper lid line
-        if (spec.eyes === 1)
-          for (let k = 0; k < 3; k++)
-            kit.add(eyes, C(0.004, 0.022, 6), ink, [x + s * (0.03 + k * 0.009), 0.036 - k * 0.008, 0.226], { rot: [0, 0, -s * (0.5 + k * 0.35)] });
-      }
-    }
-    const browY = 0.28 + (spec.brows === 2 ? 0.014 : 0);
-    for (const s of [-1, 1]) {
-      const tilt = spec.brows === 1 ? 0.04 : spec.brows === 2 ? 0.3 : 0.16;
-      kit.add(head, C(spec.brows === 1 ? 0.012 : 0.0085, 0.05, 8), browC, [s * 0.09, browY, 0.226], { rot: [0, 0, Math.PI / 2 - s * tilt] });
-    }
-    kit.add(head, S(0.02, 16, 12), skin.clone().multiplyScalar(0.96), [0, 0.152, 0.247], { scale: [1.1, 0.8, 0.75] });
-    for (const s of [-1, 1]) kit.add(head, S(0.03, 14, 10), skin.clone().lerp(new THREE.Color("#ff8a9a"), 0.45), [s * 0.135, 0.135, 0.196], { scale: [1, 0.7, 0.25] });
+    mouth = new THREE.Group();
+    head.add(eyes, mouth);
+    const patch = facePatch(spec, irisFor(h), "#" + skin.getHexString(), eyes, mouth);
+    patch.position.set(...HC);
+    patch.scale.set(1, 0.98, 0.95);
+    head.add(patch);
+    extra.push(patch);
     const beard = spec.facial === 1;
-    if (beard) kit.add(head, new THREE.SphereGeometry(0.262, 32, 14, 0, Math.PI * 2, Math.PI * 0.6, Math.PI * 0.4), hairC, HC, { scale: [1, 1, 0.97] });
+    if (beard) kit.add(head, new THREE.SphereGeometry(0.262, 32, 14, 0, Math.PI * 2, Math.PI * 0.69, Math.PI * 0.31), hairC, HC, { scale: [1, 1, 0.97] });
     if (spec.facial === 2) {
       kit.add(head, C(0.011, 0.05, 8), hairC, [0, 0.122, 0.238], { rot: [0, 0, Math.PI / 2] });
       for (const s of [-1, 1]) kit.add(head, S(0.014, 10, 8), hairC, [s * 0.03, 0.117, 0.236]);
     }
-    mouth = new THREE.Group();
-    mouth.position.set(0, 0.097, beard ? 0.244 : 0.224);
-    head.add(mouth);
-    const lip = new THREE.Color("#7a2f3a");
-    if (spec.mouth === 1) {
-      kit.add(mouth, new THREE.SphereGeometry(0.04, 18, 10, 0, Math.PI * 2, Math.PI / 2, Math.PI / 2), lip, [0, 0.01, 0], { scale: [1, 0.85, 0.35] });
-      kit.add(mouth, B(0.05, 0.012, 0.012), "#ffffff", [0, 0.003, 0.006]);
-    } else if (spec.mouth === 2) {
-      kit.add(mouth, T(0.022, 0.0068, Math.PI, 6, 16), lip, [0, 0.012, 0], { rot: [0, 0, Math.PI] });
-    } else {
-      kit.add(mouth, T(0.035, 0.0078, Math.PI, 6, 20), lip, [0, 0.022, 0], { rot: [0, 0, Math.PI] });
-    }
     if (spec.accessory === 1) {
       const frame = new THREE.Color("#1d1530");
       for (const s of [-1, 1]) {
-        kit.add(head, T(0.05, 0.0065, Math.PI * 2, 8, 28), frame, [s * 0.088, 0.205, 0.252]);
+        kit.add(head, T(0.058, 0.0065, Math.PI * 2, 8, 28), frame, [s * 0.083, 0.202, 0.256]);
         kit.add(head, B(0.006, 0.006, 0.2), frame, [s * 0.14, 0.215, 0.15], { rot: [0, -s * 0.25, 0] });
       }
-      kit.add(head, B(0.035, 0.006, 0.006), frame, [0, 0.212, 0.256]);
+      kit.add(head, B(0.03, 0.006, 0.006), frame, [0, 0.212, 0.26]);
     }
     if (spec.accessory === 2) kit.add(head, S(0.009, 10, 8), "#d6203f", [0, 0.26, 0.246]);
     if (spec.accessory === 3 && !covered) for (const s of [-1, 1]) kit.add(head, S(0.016, 10, 8), "#ffd27a", [s * 0.248, 0.135, 0.01]);
@@ -460,8 +460,16 @@ export function buildCharacter(look: Look): Character {
   const beanie = !!P.beanie && short;
   const cap = !!P.cap && short && !beanie;
   const top = (r = 0.264, thetaLen = 0.3) => kit.add(head, new THREE.SphereGeometry(r, 36, 14, 0, Math.PI * 2, 0, Math.PI * thetaLen), hairC, HC, { scale: [1.02, 1, 0.98] });
-  const back = (r = 0.266, thetaLen = 0.66, open = 1.22) =>
-    kit.add(head, new THREE.SphereGeometry(r, 36, 20, Math.PI / 2 + open, Math.PI * 2 - open * 2, 0, Math.PI * thetaLen), hairC, HC, { scale: [1.02, 1, 0.98] });
+  const back = (r = 0.266, thetaLen = 0.66, open = spec ? 0.92 : 1.22) => {
+    if (!spec) return kit.add(head, new THREE.SphereGeometry(r, 36, 20, Math.PI / 2 + open, Math.PI * 2 - open * 2, 0, Math.PI * thetaLen), hairC, HC, { scale: [1.02, 1, 0.98] });
+    // anime cut: full over the temples, then stepping back behind the ears, so no block by the cheek
+    const split = Math.min(thetaLen, 0.5);
+    kit.add(head, new THREE.SphereGeometry(r, 36, 14, Math.PI / 2 + open, Math.PI * 2 - open * 2, 0, Math.PI * split), hairC, HC, { scale: [1.02, 1, 0.98] });
+    if (thetaLen > split) {
+      const o2 = open + 0.75;
+      kit.add(head, new THREE.SphereGeometry(r, 36, 8, Math.PI / 2 + o2, Math.PI * 2 - o2 * 2, Math.PI * split - 0.02, Math.PI * (thetaLen - split) + 0.02), hairC, HC, { scale: [1.02, 1, 0.98] });
+    }
+  };
   const lump = (pos: V3, r: number, scale: V3, rot: V3 = [0, 0, 0], c = hairC) => kit.add(head, S(r, 18, 14), c, pos, { scale, rot });
   if (hs === 7) {
     // turban
@@ -545,7 +553,7 @@ export function buildCharacter(look: Look): Character {
         lump([Math.cos(a) * 0.08, 0.5 + Math.sin(a) * 0.06, -0.09 + Math.sin(a * 2) * 0.03], 0.055, [1, 1, 1]); // messy bun
       }
       kit.add(head, T(0.075, 0.018), new THREE.Color(P.scrunchie ?? P.trimC ?? P.topC), [0, 0.43, -0.07], { rot: [1.2, 0, 0] }); // scrunchie
-      for (const t of [-1, 1]) kit.add(head, C(0.014, 0.14, 6), hairC, [t * 0.2, 0.2, 0.15], { rot: [0.2, 0, -t * 0.14] }); // loose strands
+      for (const t of [-1, 1]) kit.add(head, new THREE.ConeGeometry(0.035, 0.2, 8), hairC, [t * 0.215, 0.2, 0.12], { rot: [Math.PI + 0.15, 0, t * 0.12] }); // pointed side locks
     } else {
       // short, with a soft swoop at the front
       for (let i = -2; i <= 2; i++)
@@ -556,6 +564,47 @@ export function buildCharacter(look: Look): Character {
       lump([-0.07, 0.48, 0.07], 0.07, [1.2, 0.75, 1], [0.3, 0, 0.5]); // messy tufts on top
       lump([0.03, 0.49, -0.05], 0.075, [1.2, 0.7, 1.1], [-0.3, 0, -0.3]);
       lump([0.12, 0.44, 0.03], 0.065, [1, 0.8, 1], [0, 0, -0.7]);
+    }
+  }
+
+  /* anime bangs over the forehead, and spikes on short hair */
+  const aim = (yaw: number, pitch: number): V3 => {
+    const e = new THREE.Euler().setFromQuaternion(new THREE.Quaternion().setFromEuler(new THREE.Euler(Math.PI + pitch, yaw, 0, "YXZ")), "XYZ");
+    return [e.x, e.y, e.z];
+  };
+  if (spec && hs !== 5 && hs !== 7 && hs !== 8) {
+    const n = hs === 2 ? 5 : 7;
+    const spread = hs === 2 ? 0.7 : 0.95;
+    for (let k = 0; k < n; k++) {
+      const a = -spread + (2 * spread * k) / (n - 1);
+      const len = 0.12 + ((k * 37 + (h % 7)) % 3) * 0.02 - Math.abs(a) * 0.03;
+      kit.add(head, new THREE.ConeGeometry(0.05, len, 8), hairC, [Math.sin(a) * 0.236, 0.37 - Math.abs(a) * 0.035, Math.cos(a) * 0.212], {
+        rot: aim(a + (k % 2 ? 0.12 : -0.12) * Math.sign(a || 1), -0.3),
+      });
+    }
+  }
+  if (spec && hs !== 5 && hs !== 7 && hs !== 8) {
+    // pointed locks along the front edge of the hair, so it never ends in a straight cut
+    for (const t of [-1, 1]) {
+      for (let k = 0; k < 3; k++) {
+        const a = t * (0.98 + k * 0.2);
+        const len = [0.2, 0.17, 0.13][k] + (hs === 1 || hs === 6 ? 0.06 : 0);
+        kit.add(head, new THREE.ConeGeometry(0.045, len, 8), hairC, [Math.sin(a) * 0.255, 0.25 - k * 0.012, Math.cos(a) * 0.235], {
+          rot: aim(a, -0.12),
+        });
+      }
+    }
+  }
+  if (spec && (hs === 0 || hs === 4) && !beanie && !cap) {
+    for (let i = 0; i < 13; i++) {
+      const y = 0.95 - (i / 12) * 0.75;
+      const r = Math.sqrt(1 - y * y);
+      const t = i * 2.39996 + (h % 5);
+      const d = new THREE.Vector3(Math.cos(t) * r, y, Math.sin(t) * r);
+      if (d.z > 0.35 && d.y < 0.75) d.z = -Math.abs(d.z); // keep spikes off the face
+      const q = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), d.clone().add(new THREE.Vector3(0, 0, -0.35)).normalize());
+      const e = new THREE.Euler().setFromQuaternion(q);
+      kit.add(head, new THREE.ConeGeometry(0.07, 0.17 + (i % 3) * 0.03, 8), hairC, [d.x * 0.22, HC[1] + d.y * 0.22, d.z * 0.21], { rot: [e.x, e.y, e.z] });
     }
   }
 
@@ -594,7 +643,7 @@ export function buildCharacter(look: Look): Character {
     depthOnly = new THREE.MeshBasicMaterial({ colorWrite: false });
     mats.push(depthOnly);
   } else {
-    lit = withRim(new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.72, metalness: 0 }), rimC, 0.32);
+    lit = withRim(new THREE.MeshToonMaterial({ vertexColors: true, gradientMap: toonGradient() }), rimC, 0.22, 0.05);
     glow = new THREE.MeshBasicMaterial({ vertexColors: true });
   }
   mats.push(lit);
@@ -616,8 +665,8 @@ export function buildCharacter(look: Look): Character {
     kit.mapY(elbow, (y) => (y > -0.14 ? [y * 1.18, 1.18] : [y - 0.0252, 1]));
   }
   head.position.y = 0.54 + DY + (1.07 - 0.54) * TS;
-  head.scale.setScalar(0.8);
-  kit.bake(lit, glow, geos, !look.holo, depthOnly);
+  head.scale.setScalar(0.9); // a slightly bigger, chibi-leaning head
+  kit.bake(lit, glow, geos, !look.holo, depthOnly, look.holo || !charOptions.ink ? undefined : outlineMaterial());
 
   root.add(head);
   return { root, legs, arms, head, eyes, mouth, mats, geos, holoTime };
