@@ -64,7 +64,7 @@ Test with your chosen model before going live: send a chat message, run one date
 
 Every model call is recorded with its feature, what started it and the tokens the provider billed. Calls that were billed but unusable (a thinking model cut off by `AI_MAX_TOKENS`) and calls refused for an empty balance are recorded too. Rows are kept for 30 days.
 
-- **Operator page.** Settings → Operator shows "AI usage, last 7 days": total calls and tokens, how many tokens went to hidden reasoning, and the top spenders by feature and request. `GET /api/admin/ai-usage?days=7` returns the same report as JSON (operators only).
+- **Operator page.** The Operator tab (in the nav for operator accounts, or `/#/operator`) shows "AI usage, last 7 days": total calls and tokens, how many tokens went to hidden reasoning, and the top spenders by feature and request. `GET /api/admin/ai-usage?days=7` returns the same report as JSON (operators only).
 - **Render logs.** Each call also writes one line at once, on the web service or the worker: `ai_usage area='worker: date' feature=date_line model=... status=ok prompt=... completion=... reasoning=... total=...`.
 
 Features: `moderation` (safety checks), `chat` (agent interview), `date_line` (one line of a date), `date_score` (the reflection after a date), `calibration`, `studio`, `transcribe`. A large `reasoning` share means `AI_MODEL` or `MODERATION_LLM_MODEL` is a thinking model; pick a non-thinking one or lower `AI_MAX_TOKENS`. Hello Minds Cognition is billed by Hello Minds and is not in this report.
