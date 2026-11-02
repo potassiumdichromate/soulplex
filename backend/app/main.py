@@ -1,4 +1,4 @@
-import os, time, re, json, hashlib, secrets, logging
+import asyncio, os, time, re, json, hashlib, secrets, logging
 from pathlib import Path
 from contextlib import asynccontextmanager
 from typing import Literal
@@ -25,6 +25,8 @@ from . import minds as minds_client
 from .mind_sync import enqueue as enqueue_mind, pair_payload, retire as retire_mind
 from .studio import external_allowed
 from .auth_flow import mail_ready, issue_token, consume_token, send_auth_email
+from .usage import KEEP_DAYS, area as usage_area, route as usage_route, summary as usage_summary
+from .usage import flush as flush_usage, flush_forever as flush_usage_forever
 
 
 @asynccontextmanager
@@ -53,7 +55,10 @@ async def lifespan(app):
             "The site will load. Dates and safety screening wait until those are set."
         )
     init_db()
+    flusher = asyncio.create_task(flush_usage_forever())
     yield
+    flusher.cancel()
+    flush_usage()
     await minds_client.aclose()
 
 
@@ -73,6 +78,7 @@ BODY_CAPS = {"/api/transcribe": 8 * 1024 * 1024, "/api/face": 300_000, "/api/abo
 
 @app.middleware("http")
 async def security_headers(request, call_next):
+    usage_area.set(usage_route(request.method, request.url.path))
     if request.method not in ("GET", "HEAD", "OPTIONS"):
         origin = request.headers.get("origin")
         if origin and origin.rstrip("/") != ORIGIN:
@@ -1642,6 +1648,14 @@ def dashboard(request: Request, db: Session = Depends(get_db)):
         },
         "mode": "live",
     }
+
+
+@app.get("/api/admin/ai-usage")
+def ai_usage(request: Request, days: int = 7, db: Session = Depends(get_db)):
+    """Model calls and tokens by feature and by what started them, to find what drains credits."""
+    flush_usage()  # Before this request's session opens a transaction.
+    admin(request, db)
+    return usage_summary(db, max(1, min(days, KEEP_DAYS)))
 
 
 @app.patch("/api/admin/users/{uid}")

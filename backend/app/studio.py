@@ -547,6 +547,7 @@ async def independent_answer(scenario_row, context):
         "Do not diagnose personality, trauma, or compatibility. Return the option id and a short summary grounded in the supplied facts.",
         context,
         TwinChoice,
+        feature="studio",
     ))[0]
     allowed = {o["id"] for o in scenario_row["options"]}
     if choice.option_id not in allowed:

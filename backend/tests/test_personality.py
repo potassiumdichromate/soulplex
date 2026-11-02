@@ -172,7 +172,7 @@ def test_scope_controls_what_reaches_dates(client, login):
 def test_calibration_is_blinded_and_scored(client, login, monkeypatch):
     seen = {}
 
-    async def fake_structured(system, payload, typ):
+    async def fake_structured(system, payload, typ, **_):
         seen["payload"] = payload
         return typ(predictions=[{"id": s["id"], "value": 4} for s in payload["statements"]]), 0
 

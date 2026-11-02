@@ -148,7 +148,10 @@ def _wait(response):
         return 1.0
 
 
-async def structured(system, payload, typ, model=None):
+async def structured(system, payload, typ, model=None, feature="other"):
+    """One JSON model call. feature names the spend in the usage log ("moderation", "date_line", ...)."""
+    from .usage import record
+
     if not os.getenv("AI_API_KEY") or not os.getenv("AI_MODEL"):
         raise ProviderError("Live AI is not configured.")
     model = model or os.environ["AI_MODEL"]
@@ -172,11 +175,17 @@ async def structured(system, payload, typ, model=None):
                     continue
                 break
             if r.status_code == 402:
+                record(feature, model, status="no_balance")
                 raise ProviderError("The AI provider balance is empty. Top up credits, then try again.")
+            if r.status_code >= 400:
+                record(feature, model, status=f"http_{r.status_code}")
             r.raise_for_status()
             body = r.json()
             choice = body["choices"][0]
-            if choice.get("finish_reason") not in ("stop", None) or choice["message"].get("refusal"):
+            # Billed even when the answer is unusable, such as a thinking model cut off by max_tokens.
+            usable = choice.get("finish_reason") in ("stop", None) and not choice["message"].get("refusal")
+            record(feature, model, body.get("usage"), "ok" if usable else "unusable")
+            if not usable:
                 raise ProviderError(
                     "The agent could not complete this safely. Please try again."
                 )
@@ -220,6 +229,7 @@ async def moderate(text):
                 {"text": (text or "")[:6000]},
                 ModerationVerdict,
                 model=os.getenv("MODERATION_LLM_MODEL") or None,
+                feature="moderation",
             )
         except ProviderError as exc:
             if "balance is empty" in str(exc):
@@ -283,6 +293,7 @@ async def interview(text, history, memory, index, mind=None):
             "categories": CATEGORIES,
         },
         Interview,
+        feature="chat",
     )
     result.facts = [
         f
@@ -342,6 +353,7 @@ async def run_dialogue(venue, a, b, scene_id=""):
                     "turn": i + 1,
                 },
                 Turn,
+                feature="date_line",
             )
             tokens += cost
             allowed = {f["id"] for f in facts}
@@ -400,6 +412,9 @@ async def transcribe_audio(audio: bytes, mime: str):
                 files={"file": ("answer." + extensions[mime], audio, mime)},
             )
             r.raise_for_status()
+            from .usage import record
+
+            record("transcribe", os.environ["TRANSCRIBE_MODEL"])
             text = r.json()["text"].strip()
             if not text or len(text) > 2000:
                 raise ProviderError(

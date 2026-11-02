@@ -314,7 +314,11 @@ export function Settings() {
 export function Operator() {
   const { perform, user } = useStore();
   const [d, setD] = useState<any>(null);
-  const refresh = async () => setD(await api("/admin"));
+  const [usage, setUsage] = useState<any>(null);
+  const refresh = async () => {
+    setD(await api("/admin"));
+    setUsage(await api("/admin/ai-usage?days=7").catch(() => null));
+  };
   useEffect(() => {
     if (user?.role === "admin") perform(refresh);
   }, [user?.id]);
@@ -334,6 +338,28 @@ export function Operator() {
               </div>
             ))}
           </div>
+          {usage && (
+            <section className="glass card">
+              <h3>AI usage, last {usage.days} days</h3>
+              <p className="fine">
+                {usage.totals.calls} model calls · {usage.totals.total_tokens.toLocaleString()} tokens
+                {usage.totals.reasoning_tokens > 0 && <> · {usage.totals.reasoning_tokens.toLocaleString()} spent on hidden reasoning</>}
+                {usage.refused_for_balance > 0 && <> · {usage.refused_for_balance} refused for an empty balance</>}
+              </p>
+              {!usage.by_area.length && <p className="fine">No model calls yet.</p>}
+              <div className="table">
+                {usage.by_area.map((r: any) => (
+                  <div key={r.area + r.feature} className="tr">
+                    <span>
+                      <b>{r.feature.replace(/_/g, " ")}</b> <small>{r.area}</small>
+                    </span>
+                    <span className="tag">{r.calls} calls</span>
+                    <span className="tag">{r.total_tokens.toLocaleString()} tokens</span>
+                  </div>
+                ))}
+              </div>
+            </section>
+          )}
           <section className="glass card">
             <h3>Members</h3>
             <div className="table">

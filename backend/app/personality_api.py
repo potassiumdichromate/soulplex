@@ -256,7 +256,7 @@ async def _predict(db, user, run_id, context, labels):
             raise ProviderError("Your twin did not answer in time. Try the calibration again later.")
         return parse_predictions(text, labels), "minds"
     if os.getenv("AI_API_KEY") and os.getenv("AI_MODEL"):
-        result, _tokens = await structured(CALIBRATION_SYSTEM, context, Predictions)
+        result, _tokens = await structured(CALIBRATION_SYSTEM, context, Predictions, feature="calibration")
         return parse_predictions(result.model_dump_json(), labels), "model"
     raise ProviderError("Calibration needs a connected twin: Hello Minds with your permission, or a configured model.")
 

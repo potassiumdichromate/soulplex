@@ -60,6 +60,15 @@ What changes with 0G:
 
 Test with your chosen model before going live: send a chat message, run one date and one calibration, and confirm no "model request failed" errors appear in the logs.
 
+### Where the credits go
+
+Every model call is recorded with its feature, what started it and the tokens the provider billed. Calls that were billed but unusable (a thinking model cut off by `AI_MAX_TOKENS`) and calls refused for an empty balance are recorded too. Rows are kept for 30 days.
+
+- **Operator page.** Settings → Operator shows "AI usage, last 7 days": total calls and tokens, how many tokens went to hidden reasoning, and the top spenders by feature and request. `GET /api/admin/ai-usage?days=7` returns the same report as JSON (operators only).
+- **Render logs.** Each call also writes one line at once, on the web service or the worker: `ai_usage area='worker: date' feature=date_line model=... status=ok prompt=... completion=... reasoning=... total=...`.
+
+Features: `moderation` (safety checks), `chat` (agent interview), `date_line` (one line of a date), `date_score` (the reflection after a date), `calibration`, `studio`, `transcribe`. A large `reasoning` share means `AI_MODEL` or `MODERATION_LLM_MODEL` is a thinking model; pick a non-thinking one or lower `AI_MAX_TOKENS`. Hello Minds Cognition is billed by Hello Minds and is not in this report.
+
 ### Optional
 
 | Variable | Default | Purpose |
@@ -251,7 +260,7 @@ This list describes concrete missing operational work, not completed features:
 | 409 after editing memory | Intended stale/version guard. Reload and create a fresh scene. |
 | 409 on calibration | The member needs at least 4 answered statements per trait; the full 50 work best. |
 | 503 from live AI | Provider access/model compatibility/moderation config; do not switch silently to demo. |
-| "The AI provider balance is empty" | The 0G account is out of credits. Top up at pc.0g.ai. |
+| "The AI provider balance is empty" | The 0G account is out of credits. Top up at pc.0g.ai, then check "AI usage" on the Operator page to see what spent them. Hello Minds says "out of Cognition" instead. |
 | "The model request failed" with 0G | `AI_API_KEY` is the `mk-` key or a placeholder, `AI_MODEL` is not in `/v1/models`, or the model cannot return JSON. |
 | "Safety screening is unavailable" | Moderation could not run. It fails closed, so every message is blocked until the model or `MODERATION_API_KEY` works. |
 | No candidates | Same local city and intention, reciprocal age/gender, operator approval, discovery opt-in and shareable memory on both sides. |

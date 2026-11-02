@@ -387,7 +387,23 @@ class MindTask(Base):
     updated: Mapped[float] = mapped_column(Float, default=now)
 
 
-SCHEMA = 9
+class AiUsage(Base):
+    """One model call: which feature made it, what started it, and the tokens the provider billed."""
+
+    __tablename__ = "ai_usage"
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=uid)
+    created: Mapped[float] = mapped_column(Float, default=now, index=True)
+    area: Mapped[str] = mapped_column(String(120), default="")
+    feature: Mapped[str] = mapped_column(String(40), default="")
+    model: Mapped[str] = mapped_column(String(120), default="")
+    status: Mapped[str] = mapped_column(String(20), default="ok")
+    prompt_tokens: Mapped[int] = mapped_column(Integer, default=0)
+    completion_tokens: Mapped[int] = mapped_column(Integer, default=0)
+    reasoning_tokens: Mapped[int] = mapped_column(Integer, default=0)
+    total_tokens: Mapped[int] = mapped_column(Integer, default=0)
+
+
+SCHEMA = 10
 
 
 class SchemaVersion(Base):
@@ -428,6 +444,10 @@ def init_db():
         if version == 8:
             _add_personality_tables(conn)
             version = 9
+        if version == 9:
+            Base.metadata.create_all(conn, tables=[AiUsage.__table__])
+            conn.execute(update(SchemaVersion).values(version=10))
+            version = 10
         if version != SCHEMA:
             raise RuntimeError(f"Unsupported schema version {version!r}; expected {SCHEMA}.")
 

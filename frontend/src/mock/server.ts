@@ -1057,6 +1057,10 @@ function route(path: string, method: string, b: Body): any {
       bump(t);
       return { ok: true };
     }
+    if (path.startsWith("/admin/ai-usage")) {
+      const zero = { calls: 0, prompt_tokens: 0, completion_tokens: 0, reasoning_tokens: 0, total_tokens: 0 };
+      return { days: 7, totals: zero, refused_for_balance: 0, by_feature: [], by_area: [], by_model: [] };
+    }
     if ((x = m(/^\/admin\/reports\/([\w-]+)\/resolve$/))) {
       (db.reports.find((r) => r.id === x![1]) ?? fail(404)).status = "resolved";
       return { ok: true };

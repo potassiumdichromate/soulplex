@@ -373,6 +373,7 @@ async def assess(a: dict, b: dict, dialogue: list[dict]) -> tuple[dict, int]:
                 "dialogue": dialogue,
             },
             Assessment,
+            feature="date_score",
         )
         return finalize(apply_signals(from_model(m, a, b), a, b), "model"), tokens
     except ProviderError:

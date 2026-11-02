@@ -36,8 +36,7 @@ def wire(monkeypatch):
 
     monkeypatch.setattr(ai, "transport", httpx.MockTransport(handle))
     monkeypatch.setattr(ai, "_object_mode", set())
-    real_sleep = asyncio.sleep
-    monkeypatch.setattr(ai.asyncio, "sleep", lambda *_: real_sleep(0))
+    monkeypatch.setattr(ai, "_wait", lambda response: 0)  # Retries without waiting.
     return calls, queue
 
 
@@ -147,3 +146,58 @@ def test_transcription_goes_to_the_router(wire, zero_g, monkeypatch):
 def test_an_openai_base_url_left_in_the_env_group_is_ignored_for_0g(zero_g, monkeypatch):
     monkeypatch.setenv("AI_BASE_URL", "https://api.openai.com/v1")
     assert ai.base_url() == "https://router-api.0g.ai/v1"
+
+
+def test_every_call_is_logged_with_its_feature_tokens_and_cause(wire, zero_g, client, login, monkeypatch):
+    import app.main as main
+    from sqlalchemy import delete, select, update
+    from app.db import AiUsage, SessionLocal, User
+    from app.usage import flush
+
+    flush()  # Start from an empty log; earlier tests in this process made calls too.
+    with SessionLocal() as db:
+        db.execute(delete(AiUsage))
+        db.commit()
+    calls, queue = wire
+    monkeypatch.setattr(main, "moderate", ai.moderate)
+    usage = {"prompt_tokens": 300, "completion_tokens": 900, "total_tokens": 1200,
+             "completion_tokens_details": {"reasoning_tokens": 850}}
+    verdict = httpx.Response(200, json={"choices": [{"message": {"content": '{"flagged": false, "categories": []}'}, "finish_reason": "stop"}], "usage": usage})
+    login("maya")
+    queue += [verdict, verdict]
+    assert client.put("/api/about", json={"job": "a nurse", "prompts": [{"id": "win", "answer": "Kind to waiters."}]}).status_code == 200
+    # Billed even when unusable, and an empty balance is counted as refused.
+    queue += [reply('{"option_id": "a"}', finish="length"), httpx.Response(402, json={})]
+    for _ in range(2):
+        with pytest.raises(ai.ProviderError):
+            run(ai.structured("sys", {}, Pick, feature="date_line"))
+
+    flush()
+    with SessionLocal() as db:
+        rows = db.scalars(select(AiUsage).order_by(AiUsage.created)).all()
+        assert [(r.feature, r.status) for r in rows] == [
+            ("moderation", "ok"), ("moderation", "ok"), ("date_line", "unusable"), ("date_line", "no_balance"),
+        ]
+        assert rows[0].area == "PUT /api/about" and rows[0].reasoning_tokens == 850 and rows[0].model == "glm-5.2"
+        assert rows[2].total_tokens == 12 and rows[3].total_tokens == 0
+        db.execute(update(User).where(User.email == "maya@demo.soulplex.local").values(role="admin"))
+        db.commit()
+
+    report = client.get("/api/admin/ai-usage").json()
+    assert report["totals"]["calls"] == 4 and report["totals"]["total_tokens"] == 2412
+    assert report["totals"]["reasoning_tokens"] == 1700 and report["refused_for_balance"] == 1
+    top = report["by_area"][0]
+    assert (top["area"], top["feature"], top["calls"]) == ("PUT /api/about", "moderation", 2)
+    assert report["by_feature"][0]["feature"] == "moderation"
+
+
+def test_ids_are_folded_out_of_request_labels():
+    from app.usage import route
+
+    assert route("POST", "/api/scenes/3f2b8c1e-1d2a-4b5c-9e8f-0a1b2c3d4e5f/decision") == "POST /api/scenes/:id/decision"
+    assert route("PUT", "/api/about") == "PUT /api/about"
+
+
+def test_a_member_cannot_read_ai_usage(client, login):
+    login("maya")
+    assert client.get("/api/admin/ai-usage").status_code == 403

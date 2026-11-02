@@ -60,7 +60,7 @@ def test_interview_rejects_invented_memories(monkeypatch):
     async def safe(text):
         pass
 
-    async def fake(system, payload, typ):
+    async def fake(system, payload, typ, **_):
         return ai.Interview(
             reply="What else matters?",
             facts=[
@@ -77,7 +77,7 @@ def test_interview_rejects_invented_memories(monkeypatch):
 
 
 def test_scene_cannot_reference_other_persons_private_memory(monkeypatch):
-    async def fake(*args):
+    async def fake(*args, **_):
         return ai.Turn(text="I have a fact.", fact_ids=["someone-elses-fact"]), 10
 
     monkeypatch.setattr(ai, "structured", fake)

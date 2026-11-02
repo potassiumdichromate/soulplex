@@ -11,11 +11,13 @@ from .mind_sync import process_outbox
 from .studio import external_allowed
 from .resonance import assess
 from .security import log
+from .usage import area as usage_area, flush as flush_usage, prune as prune_usage
 
 logging.basicConfig(level=logging.INFO)
 
 
 async def process_one():
+    usage_area.set("worker: date")
     with SessionLocal() as db:
         db.execute(
             update(Scene)
@@ -147,17 +149,24 @@ async def _check_cognition(aa, bb):
 
 async def loop():
     init_db()
+    pruned = 0
     try:
         while True:
+            if time.time() - pruned > 3600:
+                prune_usage()
+                pruned = time.time()
             busy = await process_one()
             try:
+                usage_area.set("worker: hello minds")
                 if await process_outbox():
                     busy = True
             except Exception:
                 logging.exception("Hello Minds outbox pass failed")
+            flush_usage()
             if not busy:
                 await asyncio.sleep(1)
     finally:
+        flush_usage()
         await minds.aclose()
 
 
