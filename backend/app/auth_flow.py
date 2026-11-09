@@ -1,5 +1,6 @@
 """Single-use account tokens and SMTP delivery. Never log or persist raw tokens."""
 
+import logging
 import os
 import secrets
 import smtplib
@@ -13,6 +14,8 @@ from sqlalchemy import delete
 
 from .db import AuthToken, User
 from .security import ORIGIN, digest
+
+log = logging.getLogger("soulplex.mail")
 
 
 def mail_ready():
@@ -86,14 +89,25 @@ def send_auth_email(address, raw, purpose):
         f"{instruction}: {link}\n\nThis link expires soon. If you did not request it, you can ignore this email."
     )
     try:
-        with smtplib.SMTP(
-            os.environ["SMTP_HOST"], int(os.getenv("SMTP_PORT", "587")), timeout=15
-        ) as smtp:
-            smtp.starttls(context=ssl.create_default_context())
+        port = int(os.getenv("SMTP_PORT", "587"))
+        context = ssl.create_default_context()
+        # 465 speaks TLS from the first byte; 587 (and 25) start plain and upgrade with STARTTLS.
+        if port == 465:
+            smtp = smtplib.SMTP_SSL(os.environ["SMTP_HOST"], port, timeout=15, context=context)
+        else:
+            smtp = smtplib.SMTP(os.environ["SMTP_HOST"], port, timeout=15)
+        with smtp:
+            if port != 465:
+                smtp.starttls(context=context)
             if os.getenv("SMTP_USERNAME"):
                 smtp.login(os.environ["SMTP_USERNAME"], os.environ["SMTP_PASSWORD"])
             smtp.send_message(message)
     except (OSError, smtplib.SMTPException, KeyError, ValueError) as exc:
+        # The reason only, never the message or credentials.
+        log.warning(
+            "SMTP delivery to %s:%s failed: %s: %s",
+            os.getenv("SMTP_HOST"), os.getenv("SMTP_PORT", "587"), type(exc).__name__, exc,
+        )
         raise HTTPException(
             503, "Email delivery is unavailable. Try again later."
         ) from exc
