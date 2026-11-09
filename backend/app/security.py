@@ -28,11 +28,19 @@ def _load_dotenv():
 _load_dotenv()
 
 PRODUCTION = os.getenv("APP_ENV", "development") == "production"
-ORIGIN = (
-    os.getenv("APP_ORIGIN")
-    or os.getenv("RENDER_EXTERNAL_URL")
-    or "http://localhost:8000"
-).rstrip("/")
+# APP_ORIGIN may list several sites, comma-separated (a custom domain, its www form, the
+# onrender.com address). The first is the canonical one used in emailed links. Render's own
+# address is always allowed.
+ORIGINS = [
+    o.strip().rstrip("/")
+    for o in (
+        os.getenv("APP_ORIGIN") or os.getenv("RENDER_EXTERNAL_URL") or "http://localhost:8000"
+    ).split(",")
+    if o.strip()
+]
+if os.getenv("RENDER_EXTERNAL_URL", "").rstrip("/") not in ORIGINS + [""]:
+    ORIGINS.append(os.environ["RENDER_EXTERNAL_URL"].rstrip("/"))
+ORIGIN = ORIGINS[0]
 
 
 def hash_password(password):

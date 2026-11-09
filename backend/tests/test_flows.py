@@ -249,6 +249,16 @@ def test_cross_city_and_preferences_excluded(client, login):
     assert "Arjun" not in names(client)
 
 
+def test_every_listed_origin_is_allowed(client, login, monkeypatch):
+    import app.main as main
+
+    monkeypatch.setattr(main, "ORIGINS", ["https://soulplex.xyz", "https://www.soulplex.xyz", "http://testserver"])
+    login()
+    for site, status in (("https://www.soulplex.xyz", 200), ("https://soulplex.xyz/", 200), ("https://evil.invalid", 403)):
+        r = client.put("/api/about", json={}, headers={"Origin": site})
+        assert r.status_code == status, (site, r.text)
+
+
 def test_origin_and_body_limit(client, login):
     login()
     assert (

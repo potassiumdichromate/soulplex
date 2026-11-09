@@ -31,8 +31,8 @@ from .usage import flush as flush_usage, flush_forever as flush_usage_forever
 
 @asynccontextmanager
 async def lifespan(app):
-    if PRODUCTION and not ORIGIN.startswith("https://"):
-        raise RuntimeError("Production requires an HTTPS APP_ORIGIN.")
+    if PRODUCTION and not all(o.startswith("https://") for o in ORIGINS):
+        raise RuntimeError("Production requires HTTPS for every APP_ORIGIN.")
     if PRODUCTION and not os.getenv("AI_API_KEY"):
         raise RuntimeError("AI_API_KEY is required for safety screening.")
     if PRODUCTION and not os.getenv("AI_MODEL") and not minds_enabled():
@@ -81,7 +81,7 @@ async def security_headers(request, call_next):
     usage_area.set(usage_route(request.method, request.url.path))
     if request.method not in ("GET", "HEAD", "OPTIONS"):
         origin = request.headers.get("origin")
-        if origin and origin.rstrip("/") != ORIGIN:
+        if origin and origin.rstrip("/") not in ORIGINS:
             return JSONResponse({"detail": "Origin not allowed."}, status_code=403)
         length = request.headers.get("content-length", "0")
         if not length.isdigit() or int(length) > (

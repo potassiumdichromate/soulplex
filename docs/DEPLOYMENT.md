@@ -15,7 +15,7 @@ Use a separate domain and an empty live database. Keep secrets out of Git. **The
 | Variable | Value | Source |
 |---|---|---|
 | `APP_ENV` | `production` | Set by `compose.production.yaml` and the Render env group. Enables secure cookies and startup checks. |
-| `APP_ORIGIN` | Exact HTTPS origin, e.g. `https://soulplex.example.com`, no path | Your domain |
+| `APP_ORIGIN` | Exact HTTPS origin, e.g. `https://soulplex.example.com`, no path. Several are allowed, comma-separated (`https://soulplex.xyz,https://www.soulplex.xyz`); the first is used in emailed links. Render's own address is always allowed. | Your domain |
 | `DATABASE_URL` | `postgresql+psycopg://...` with required TLS settings for a managed DB | Render sets it; compose builds it from `POSTGRES_PASSWORD` |
 | `AI_API_KEY` | Backend-only model key (OpenAI `sk-…`, or a 0G Router `sk-…` key, see below). Always required: every message goes through safety screening | platform.openai.com, or pc.0g.ai → Dashboard → API Keys |
 | `SMTP_HOST`, `SMTP_FROM` | Real outbound SMTP host and a verified sender on your delivery domain | Postmark, SendGrid, SES, Resend… |
@@ -100,7 +100,7 @@ Features: `moderation` (safety checks), `chat` (agent interview), `date_line` (o
 2. **Back up the database** if one exists (Dashboard → soulplex-db → Backups). The first start migrates the schema from v8 to v9. It only adds tables, but take the backup anyway.
 3. First time: Dashboard → New → Blueprint → this repository. Render asks for each `sync: false` secret: `AI_API_KEY`, `AI_MODEL`, `MINDS_BUILDER_API_KEY` and the four `SMTP_*` values. The worker copies them from the web service.
 4. Existing deployment: pushing to `main` redeploys. `MINDS_JUDGE` and `MINDS_SSE` are already in the `soulplex` env group. Add other tuning (for example `MINDS_ALLOWED_SKILLS`) to that group so the API and worker both get it.
-5. Custom domain: attach it to the web service, set `APP_ORIGIN` to that exact origin on **both** services, and redeploy.
+5. Custom domain: attach it to the web service, set `APP_ORIGIN` on **both** services to every address people use, main domain first (for example `https://soulplex.xyz,https://www.soulplex.xyz`), and redeploy.
 6. Confirm **soulplex-worker** is running and its logs show no errors. Free instances sleep and leave work queued; use the paid plans in the blueprint.
 
 ### Render environment checklist (0G + Hello Minds)
@@ -130,7 +130,7 @@ Where a value goes matters:
 | `SMTP_PASSWORD` | web | provider API key or password | |
 | `SMTP_FROM` | web | e.g. `no-reply@yourdomain.com` | Must be a sender verified with the provider. |
 | `DATABASE_URL` | web and worker | set by Render | Do not edit. |
-| `APP_ORIGIN` | both | only with a custom domain | Without it the app uses Render's `RENDER_EXTERNAL_URL`. |
+| `APP_ORIGIN` | both | only with a custom domain | Comma-separated, main domain first. Without it the app uses Render's `RENDER_EXTERNAL_URL`. |
 | `DEMO_MODE` | anywhere | **delete** | No longer read. |
 
 Values that look like 32-character hex strings (for example `9f2c…`) are Render's generated placeholders, not real credentials. With placeholders, model calls fail and no email is sent. Replace them.
