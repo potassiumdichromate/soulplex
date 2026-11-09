@@ -170,7 +170,13 @@ export function presetFor(spec: { look?: number; hair?: number; facial?: number 
   return pool[hashStr(seed) % pool.length];
 }
 
-/** For people without a designed face: a whole character, picked from the seed. */
+/** Whether someone's character is a woman or a man: their look's fit, or for unisex looks their hairstyle. */
+export function fitFor(spec: { look?: number; hair?: number; facial?: number } | undefined, seed: string): "f" | "m" {
+  const fit = presetFor(spec, seed).fit;
+  if (fit !== "u") return fit;
+  return [1, 2, 6, 8].includes(spec?.hair ?? 0) && !spec?.facial ? "f" : "m";
+}
+
 /** A cast look for someone without a designed face. With a gender, only looks that suit it are offered. */
 export function castFor(seed: string, fit?: "f" | "m") {
   // men get men's looks and women get women's; unisex looks are for everyone else

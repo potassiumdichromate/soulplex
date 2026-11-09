@@ -7,8 +7,9 @@
  *
  *   { "lavender": "lavender.glb", "blackbomber": "black-bomber.glb", "*": "fallback.glb" }
  *
- * "*" (optional) is used for every look without its own model. Looks without a model keep
- * the code-built character, so models can be added one at a time.
+ * "*f" / "*m" (optional) are used for every women's / men's look without its own model, and
+ * "*" for anything still left. Looks without a model keep the code-built character, so models
+ * can be added one at a time, and a model that fails to load also keeps it.
  *
  * Shared animations: Mixamo characters all use the same skeleton, so one set of movement files
  * can drive every model. List them under "_anims"; each file's clips are named after the file:
@@ -60,9 +61,9 @@ function getSharedClips() {
 }
 
 /** The model for an outfit look, loaded once and shared (null when there is none). */
-export async function modelFor(lookId: string): Promise<ModelEntry | null> {
+export async function modelFor(lookId: string, fit?: "f" | "m"): Promise<ModelEntry | null> {
   const m = await getManifest();
-  const file: string | undefined = typeof m[lookId] === "string" ? m[lookId] : typeof m["*"] === "string" ? m["*"] : undefined;
+  const file = [lookId, fit && "*" + fit, "*"].map((k) => (k && typeof m[k] === "string" ? (m[k] as string) : undefined)).find(Boolean);
   if (!file) return null;
   const shared = await getSharedClips();
   if (!cache.has(file))

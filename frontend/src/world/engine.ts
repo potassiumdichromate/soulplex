@@ -16,7 +16,7 @@ import { DATE_TYPES } from "../dateTypes";
 import type { FaceSpec } from "../faces";
 import { buildCharacter, holoMaterial } from "./character";
 import { modelFor, findClip, instance } from "./models";
-import { presetFor } from "../characters";
+import { fitFor, presetFor } from "../characters";
 
 export type WorldMode = "landing" | "home" | "date" | "calm";
 export type AgentInfo = { id: string; name: string; hue: number; self?: boolean; face?: string; skin?: string; hair?: string; hairStyle?: number; outfit?: string; spec?: FaceSpec; holo?: boolean };
@@ -268,7 +268,7 @@ class Wisp {
     this.group.position.set(Math.cos(a) * r, 0, Math.sin(a) * r);
     this.root.rotation.y = Math.random() * Math.PI * 2;
     this.pickTarget(islandR);
-    modelFor(presetFor(info.spec, info.id).id).then((e) => e && !this.gone && this.useModel(e));
+    modelFor(presetFor(info.spec, info.id).id, fitFor(info.spec, info.id)).then((e) => e && !this.gone && this.useModel(e));
   }
   useModel(e: NonNullable<Awaited<ReturnType<typeof modelFor>>>) {
     const m = instance(e);
@@ -293,8 +293,9 @@ class Wisp {
     this.clips = {
       idle: findClip(e.clips, ["idle", "standing", "stand", "breathing"]),
       walk: findClip(e.clips, ["walking", "walk", "running", "run"]),
-      sit: findClip(e.clips, ["sitting", "sit", "sitting idle"]),
-      talk: findClip(e.clips, ["talking", "talk", "sitting talking"]),
+      sit: findClip(e.clips, ["sitting_idle", "sitting idle", "sitting", "sit"]),
+      sittalk: findClip(e.clips, ["sitting_talking", "sitting talking"]),
+      talk: findClip(e.clips, ["talking", "talk"]),
     };
     this.state = "";
   }
@@ -448,13 +449,17 @@ class Wisp {
         // models sit at whatever height their animation uses: lift or lower them so the hips meet the seat
         seatY = 0;
         if (this.hips && this.clips.sit) {
-          const hipAbove = this.hips.getWorldPosition(new THREE.Vector3()).y - pos.y;
-          seatY = 0.5 - hipAbove;
+          const hip = this.hips.getWorldPosition(new THREE.Vector3());
+          seatY = 0.5 - (hip.y - pos.y);
+          // and slide them so the hips sit over the seat, not in front of it (sitting clips differ)
+          const local = this.root.worldToLocal(hip);
+          this.model.position.x = THREE.MathUtils.lerp(this.model.position.x, this.model.position.x - local.x, Math.min(1, dt * 6));
+          this.model.position.z = THREE.MathUtils.lerp(this.model.position.z, this.model.position.z - local.z, Math.min(1, dt * 6));
         }
       }
       pos.y = THREE.MathUtils.lerp(pos.y, seatY, dt * 6);
       this.root.position.y = 0;
-      this.root.rotation.x = THREE.MathUtils.lerp(this.root.rotation.x, 0.12, dt * 5);
+      this.root.rotation.x = THREE.MathUtils.lerp(this.root.rotation.x, this.model ? 0 : 0.12, dt * 5);
     } else {
       this.legs.forEach(({ hip, knee }, i) => {
         const s = Math.sin(ph + i * Math.PI);
@@ -486,10 +491,15 @@ class Wisp {
         elbow.rotation.x = ex;
       });
       pos.y = THREE.MathUtils.lerp(pos.y, 0, dt * 6);
-      this.root.position.y = Math.abs(Math.sin(ph)) * 0.045 * w + Math.sin(t * 2 + this.phase) * 0.004;
-      this.root.rotation.x = THREE.MathUtils.lerp(this.root.rotation.x, 0.07 * w, dt * 6);
+      if (this.model) {
+        this.model.position.x = THREE.MathUtils.lerp(this.model.position.x, 0, Math.min(1, dt * 6));
+        this.model.position.z = THREE.MathUtils.lerp(this.model.position.z, 0, Math.min(1, dt * 6));
+      }
+      // an animated model carries its own bob and lean; the code-built body gets them here
+      this.root.position.y = this.model ? 0 : Math.abs(Math.sin(ph)) * 0.045 * w + Math.sin(t * 2 + this.phase) * 0.004;
+      this.root.rotation.x = THREE.MathUtils.lerp(this.root.rotation.x, this.model ? 0 : 0.07 * w, dt * 6);
     }
-    this.root.rotation.z = Math.sin(ph) * 0.055 * w;
+    this.root.rotation.z = this.model ? 0 : Math.sin(ph) * 0.055 * w;
 
     // the head turns toward the viewer (within a natural range) so faces stay readable
     if (cam) {
@@ -516,7 +526,7 @@ class Wisp {
     if (this.holoTime) this.holoTime.value = t;
     if (this.mixer) {
       const talking = !!this.lookAt && this.walk < 0.2 && Math.sin(t * 0.55 + this.talkPh) > 0;
-      const want = this.seated ? (this.clips.sit ? "sit" : "idle") : this.walk > 0.45 ? "walk" : talking && this.clips.talk ? "talk" : "idle";
+      const want = this.seated ? (talking && this.clips.sittalk ? "sittalk" : this.clips.sit ? "sit" : "idle") : this.walk > 0.45 ? "walk" : talking && this.clips.talk ? "talk" : "idle";
       this.play(want);
       if (this.action && this.state === "walk") this.action.timeScale = THREE.MathUtils.clamp(this.vel.length() / 0.85, 0.6, 1.7);
       this.mixer.update(dt * motion);

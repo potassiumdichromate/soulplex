@@ -1,1 +1,6 @@
-{}
+{
+  "midnight": "midnight.glb",
+  "creamsuit": "creamsuit.glb",
+  "*m": "midnight.glb",
+  "*f": "creamsuit.glb"
+}
