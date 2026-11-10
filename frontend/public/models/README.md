@@ -27,5 +27,11 @@ blackbomber, mintcardigan, butterpuffer, rosedenim, skytrack, coraloverhirt, plu
 | `midnight.glb` | Midnight Shirt (men, and every men's look via `*m`) | Meshy image-to-3D (meshy-t2.5 + meshy-n1), Meshy auto-rig + animations | 15.7k | Idle, Walking, Sitting_Idle, Sitting_Talking, Talking |
 | `creamsuit.glb` | Cream Suit (women, and every women's look via `*f`) | same | 12.9k | same |
 
+Each person still looks like themselves: `personalize()` in `src/world/models.ts` recolours every copy of a
+shared model in the shader, skin toward the person's skin tone, hair (long hair and beards included) toward
+their hair colour, and the top and trousers toward their outfit look's colours. It finds skin and hair by
+growing regions over the texture from the face, the hands and the crown, so a new whole-figure model works
+without extra masks. A look whose id matches the model file (`midnight`, `creamsuit`) keeps its own clothes.
+
 Editable sources (`.gltf` + `.bin` + PNG, 2048² texture) are in `art-src/characters/meshy-*`. These are whole
 figures with the clothes fused to the body, not the modular base body + garments of `docs/CHARACTER_MODELS.md`.

@@ -15,7 +15,7 @@ import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
 import { DATE_TYPES } from "../dateTypes";
 import type { FaceSpec } from "../faces";
 import { buildCharacter, holoMaterial } from "./character";
-import { modelFor, findClip, instance } from "./models";
+import { modelFor, findClip, instance, personalize } from "./models";
 import { fitFor, presetFor } from "../characters";
 
 export type WorldMode = "landing" | "home" | "date" | "calm";
@@ -272,6 +272,12 @@ class Wisp {
   }
   useModel(e: NonNullable<Awaited<ReturnType<typeof modelFor>>>) {
     const m = instance(e);
+    if (!this.holoTime) {
+      // one shared model, but each person keeps their own skin tone, hair colour and outfit colours
+      const look = presetFor(this.info.spec, this.info.id);
+      const own = e.file.replace(/\.glb$/i, "") === look.id;
+      this.modelMats.push(...personalize(m, e.scene, { skin: this.info.skin, hair: this.info.hair, top: look.topC, bottom: look.bottomC, keepClothes: own }));
+    }
     if (this.holoTime) {
       const hm = holoMaterial(this.color.clone().offsetHSL(0, 0.1, 0.06), this.holoTime);
       this.modelMats.push(hm);
