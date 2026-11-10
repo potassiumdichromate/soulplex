@@ -261,7 +261,7 @@ function measure(scene: THREE.Object3D): Stats | null {
     const hairSeeds = [crown].map((i) => T[i]);
     for (let i = 0; i < n; i++) if (P[i * 3 + 1] > top - (top - neckY) * 0.15 || (P[i * 3 + 1] > neckY && P[i * 3 + 2] < -0.06)) hairSeeds.push(T[i]);
     const skinM = new Uint8Array(size * size), hairM = new Uint8Array(size * size);
-    grow(px, size, skinSeeds, skinM, 30, 115);
+    grow(px, size, skinSeeds, skinM, 24, 100);
     const near = (a: number, b: number, tol: number) => Math.abs(px[a * 4] - px[b * 4]) + Math.abs(px[a * 4 + 1] - px[b * 4 + 1]) + Math.abs(px[a * 4 + 2] - px[b * 4 + 2]) < tol;
     const hair0 = T[crown];
     // hair may only grow over parts that move with the head (long hair included), never onto clothes
@@ -290,6 +290,7 @@ function measure(scene: THREE.Object3D): Stats | null {
     }
     const hairDiffers = topA > 0 && unlikeA / topA > 0.35;
     const hw = new Float32Array(n);
+    const headV = new Float32Array(n); // vertices that may be hair: the head, and long hair
     const handV = new Uint8Array(n);
     if (si && sw)
       for (let i = 0; i < n; i++) {
@@ -307,6 +308,7 @@ function measure(scene: THREE.Object3D): Stats | null {
       if (handV[a] || handV[b] || handV[c]) continue;
       const head = w > 0.5 || Math.min(P[a * 3 + 1], P[b * 3 + 1], P[c * 3 + 1]) > neckY || (hairDiffers && Math.min(P[a * 3 + 1], P[b * 3 + 1], P[c * 3 + 1]) > waist);
       if (!head) continue;
+      headV[a] = headV[b] = headV[c] = 1;
       const x0 = Math.floor(Math.min(U(a), U(b), U(c))), x1 = Math.ceil(Math.max(U(a), U(b), U(c)));
       const y0 = Math.floor(Math.min(V(a), V(b), V(c))), y1 = Math.ceil(Math.max(V(a), V(b), V(c)));
       if (x1 - x0 > 64 || y1 - y0 > 64) continue; // a triangle spanning the atlas is a seam artefact
@@ -352,6 +354,15 @@ function measure(scene: THREE.Object3D): Stats | null {
       else if (y > ankle && y <= waist) bl.push(lum(r, gg, b));
     }
     if (sr.length < 20) return;
+    // the hair colour may only land on parts of the mesh that can be hair (not on texels of a shirt that happen
+    // to sit next to the hair in the texture)
+    if (!sm.geometry.getAttribute("aHead")) sm.geometry.setAttribute("aHead", new THREE.BufferAttribute(headV, 1));
+    if (si && sw && !sm.geometry.getAttribute("aFoot")) {
+      const feet = new Set(sm.skeleton.bones.map((b, i) => (/foot|toe/i.test(b.name) ? i : -1)).filter((i) => i >= 0));
+      const fw = new Float32Array(n);
+      for (let i = 0; i < n; i++) for (let k = 0; k < 4; k++) if (feet.has(si.getComponent(i, k))) fw[i] += sw.getComponent(i, k);
+      sm.geometry.setAttribute("aFoot", new THREE.BufferAttribute(fw, 1));
+    }
     out = {
       neck: neckY, waist, ankle, mask,
       skin: new THREE.Color(median(sr), median(sg), median(sb)),
@@ -385,13 +396,15 @@ export function personalize(obj: THREE.Object3D, source: THREE.Object3D, look: L
     mat.onBeforeCompile = (sh) => {
       Object.assign(sh.uniforms, u);
       sh.vertexShader = sh.vertexShader
-        .replace("#include <common>", "#include <common>\nvarying float vBindY;")
-        .replace("#include <begin_vertex>", "#include <begin_vertex>\n#ifdef USE_SKINNING\nvBindY = (bindMatrix * vec4(position, 1.0)).y;\n#else\nvBindY = position.y;\n#endif");
+        .replace("#include <common>", "#include <common>\nvarying float vBindY;\nvarying float vFoot;\nvarying float vHead;\nattribute float aFoot;\nattribute float aHead;")
+        .replace("#include <begin_vertex>", "#include <begin_vertex>\nvFoot = aFoot;\nvHead = aHead;\n#ifdef USE_SKINNING\nvBindY = (bindMatrix * vec4(position, 1.0)).y;\n#else\nvBindY = position.y;\n#endif");
       sh.fragmentShader = sh.fragmentShader
         .replace(
           "#include <common>",
           `#include <common>
 varying float vBindY;
+varying float vFoot;
+varying float vHead;
 uniform float uNeck, uWaist, uAnkle, uSkinOn, uHairOn, uTopOn, uBotOn, uRefHair, uRefTop, uRefBot;
 uniform sampler2D uMask;
 uniform vec3 uRefSkin, uSkin, uHair, uTop, uBot;
@@ -405,15 +418,19 @@ uniform vec3 uRefSkin, uSkin, uHair, uTop, uBot;
   float L = dot(c, vec3(0.2126, 0.7152, 0.0722));
   vec4 mk = texture2D(uMask, vMapUv);
   float sk = mk.r;
-  float hairM = mk.g;
+  float hairM = mk.g * smoothstep(0.3, 0.7, vHead);
   float headR = smoothstep(uNeck - 0.01, uNeck + 0.01, vBindY);
-  float feetR = 1.0 - smoothstep(uAnkle - 0.01, uAnkle + 0.01, vBindY);
+  // shoes are what moves with the feet; wide trouser hems that reach the ground stay trousers
+  float below = 1.0 - smoothstep(uAnkle + 0.05, uAnkle + 0.12, vBindY);
+  // below the ankle, anything clearly unlike the trousers (white sneakers under dark jeans) is shoe
+  float unlike = smoothstep(0.9, 1.6, abs(log(max(L, 1e-4) / uRefBot)));
+  float feetR = max(smoothstep(0.55, 0.8, vFoot), unlike) * below;
   float topR = smoothstep(uWaist - 0.015, uWaist + 0.015, vBindY) * (1.0 - headR);
   float botR = (1.0 - headR) * (1.0 - feetR) * (1.0 - topR);
   vec3 cs = clamp(c * (uSkin / max(uRefSkin, vec3(0.003))), 0.0, 1.0);
   vec3 ch = uHair * clamp(0.35 + 0.65 * L / uRefHair, 0.0, 2.2);
-  vec3 ct = uTop * clamp(0.3 + 0.7 * L / uRefTop, 0.0, 1.6);
-  vec3 cb = uBot * clamp(0.3 + 0.7 * L / uRefBot, 0.0, 1.6);
+  vec3 ct = uTop * clamp(pow(L / uRefTop, 0.38), 0.62, 1.28);
+  vec3 cb = uBot * clamp(pow(L / uRefBot, 0.38), 0.62, 1.28);
   c = mix(c, cs, sk * uSkinOn);
   // hair: the mask (long hair included), or anything else above the neck that is not skin
   float hr = max(hairM, headR) * (1.0 - sk);
@@ -458,15 +475,59 @@ export function rigOf(obj: THREE.Object3D): Rig {
   });
   return r;
 }
+const _v1 = new THREE.Vector3(), _v2 = new THREE.Vector3(), _v3 = new THREE.Vector3();
+/** Turn `bone` so the direction towards `child` moves a fraction `k` of the way to `target` (world space). */
+function aim(bone: THREE.Bone | undefined, child: THREE.Bone | undefined, target: THREE.Vector3, k: number) {
+  if (!bone?.parent || !child || k <= 0) return;
+  const from = bone.getWorldPosition(_v1);
+  const cur = child.getWorldPosition(_v2).sub(from).normalize();
+  const want = _v3.copy(cur).lerp(target, Math.min(1, k)).normalize();
+  _q.setFromUnitVectors(cur, want);
+  bone.parent.getWorldQuaternion(_qp);
+  bone.quaternion.premultiply(_qp.clone().invert().multiply(_q).multiply(_qp));
+  bone.updateMatrixWorld(true);
+}
+/** The body's own axes from the root: up, forward, and right. */
+function axes(root: THREE.Object3D) {
+  root.getWorldQuaternion(_qp);
+  return {
+    up: new THREE.Vector3(0, 1, 0),
+    fwd: new THREE.Vector3(0, 0, 1).applyQuaternion(_qp).setY(0).normalize(),
+    right: new THREE.Vector3(1, 0, 0).applyQuaternion(_qp).setY(0).normalize(),
+  };
+}
+/**
+ * The generated idle clips hold the arms stiffly out to the sides, like a mannequin. Bring any arm that is
+ * raised out sideways down to hang by the body, with a soft bend at the elbow. Arms held forward
+ * (hands on a table or in the lap while seated) are left alone.
+ */
+export function relaxArms(rig: Rig, root: THREE.Object3D, k = 1) {
+  const { up, fwd, right } = axes(root);
+  for (const side of ["Left", "Right"] as const) {
+    const arm = rig[side + "Arm"], fore = rig[side + "ForeArm"], hand = rig[side + "Hand"];
+    if (!arm || !fore) continue;
+    const from = arm.getWorldPosition(new THREE.Vector3());
+    const dir = fore.getWorldPosition(new THREE.Vector3()).sub(from).normalize();
+    const out = Math.sign(dir.dot(right)) || (side === "Left" ? 1 : -1);
+    const lateral = Math.abs(dir.dot(right));
+    const forward = dir.dot(fwd);
+    if (lateral < 0.42 || forward > 0.55) continue; // already hanging, or reaching forward
+    // hang down, a little out from the hips and a touch forward
+    const target = up.clone().multiplyScalar(-1).addScaledVector(right, out * 0.2).addScaledVector(fwd, 0.08).normalize();
+    aim(arm, fore, target, k);
+    if (hand) aim(fore, hand, up.clone().multiplyScalar(-0.92).addScaledVector(fwd, 0.38).addScaledVector(right, out * 0.04).normalize(), k);
+  }
+}
 /** Raise the right hand and wave. k: 0..1 how far into the gesture; t: time for the waving. */
 export function wave(rig: Rig, root: THREE.Object3D, k: number, t: number) {
   if (k <= 0) return;
-  root.getWorldQuaternion(_qp);
-  const fwd = _ax.set(0, 0, 1).applyQuaternion(_qp).clone();
-  const side = new THREE.Vector3(1, 0, 0).applyQuaternion(_qp);
-  turn(rig.RightArm, fwd, -2.25 * k); // the arm swings up and out to the side (the right hand is on -x)
-  turn(rig.RightArm, side, -0.3 * k); // a little forward, toward the person greeted
-  turn(rig.RightForeArm, fwd, (-0.5 + Math.sin(t * 11) * 0.4) * k); // the forearm waves
+  const { up, fwd, right } = axes(root);
+  const arm = rig.RightArm, fore = rig.RightForeArm, hand = rig.RightHand;
+  if (!arm || !fore) return;
+  const out = Math.sign(fore.getWorldPosition(new THREE.Vector3()).sub(arm.getWorldPosition(new THREE.Vector3())).dot(right)) || -1;
+  // upper arm out and up to the side, forearm upright and swaying: a friendly hello
+  aim(arm, fore, right.clone().multiplyScalar(out * 0.9).addScaledVector(up, 0.25).addScaledVector(fwd, 0.25).normalize(), k);
+  if (hand) aim(fore, hand, up.clone().addScaledVector(right, out * (0.15 + Math.sin(t * 9) * 0.4)).addScaledVector(fwd, 0.15).normalize(), k);
 }
 /** A gentle listening nod. k: 0..1 strength. */
 export function nod(rig: Rig, root: THREE.Object3D, k: number, t: number, ph: number) {

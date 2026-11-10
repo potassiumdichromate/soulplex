@@ -12,10 +12,11 @@ import { RenderPass } from "three/addons/postprocessing/RenderPass.js";
 import { UnrealBloomPass } from "three/addons/postprocessing/UnrealBloomPass.js";
 import { OutputPass } from "three/addons/postprocessing/OutputPass.js";
 import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
+import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
 import { DATE_TYPES } from "../dateTypes";
 import type { FaceSpec } from "../faces";
 import { buildCharacter, holoMaterial } from "./character";
-import { modelFor, findClip, instance, personalize, rigOf, wave, nod, type Rig } from "./models";
+import { modelFor, findClip, instance, personalize, rigOf, wave, nod, relaxArms, type Rig } from "./models";
 import { fitFor, hashStr, presetFor } from "../characters";
 
 /** A soft cloud puff: overlapping round blobs, white with a feathered edge. */
@@ -145,6 +146,13 @@ function cloudSea(rnd: () => number, low: boolean, time: { value: number }, fog:
   mesh.renderOrder = -1; // behind the islands' own transparent bits
   return mesh;
 }
+
+/** Soft studio reflections for the character models only: skin and fabric get gentle highlights. */
+let charEnv: THREE.Texture | null = null;
+
+/** Islands with a waterfall, and the side it pours from (local angle: 0 = +x, PI = -x). */
+// front corners (PI/2 is straight out toward the camera), between the front path and the rim lamps
+const WATERFALLS: Record<string, number> = { willow: Math.PI / 2 + 0.52, garden: Math.PI / 2 - 0.52, cafe: Math.PI / 2 + 0.52, stars: Math.PI / 2 - 0.52, sunset: Math.PI / 2 + 0.52 };
 
 export type WorldMode = "landing" | "home" | "date" | "calm";
 export type AgentInfo = { id: string; name: string; hue: number; self?: boolean; face?: string; skin?: string; hair?: string; hairStyle?: number; outfit?: string; spec?: FaceSpec; holo?: boolean };
@@ -400,7 +408,12 @@ class Wisp {
     modelFor(presetFor(info.spec, info.id).id, fitFor(info.spec, info.id)).then((e) => e && !this.gone && this.useModel(e));
   }
   useModel(e: NonNullable<Awaited<ReturnType<typeof modelFor>>>) {
-    const m = instance(e);
+    // everyone is a little different: men a touch taller than women, and each person their own height and build
+    const man = fitFor(this.info.spec, this.info.id) === "m";
+    const hv = hashStr(this.info.id + ":body");
+    const m = instance(e, (man ? 1.7 : 1.6) * (0.96 + ((hv % 100) / 100) * 0.08));
+    m.scale.x *= 0.96 + (((hv >>> 8) % 100) / 100) * 0.08;
+    m.scale.z = m.scale.x;
     if (!this.holoTime) {
       // one shared model, but each person keeps their own skin tone, hair colour and outfit colours
       const look = presetFor(this.info.spec, this.info.id);
@@ -411,7 +424,22 @@ class Wisp {
         const hsl = c.getHSL({ h: 0, s: 0, l: 0 });
         return "#" + c.setHSL((hsl.h + ((hashStr(this.info.id + k) % 100) / 100 - 0.5) * 0.16 + 1) % 1, Math.min(1, hsl.s * (0.9 + (hashStr(this.info.id + "s" + k) % 30) / 100)), hsl.l).getHexString();
       };
-      this.modelMats.push(...personalize(m, e.scene, { skin: this.info.skin, hair: this.info.hair, top: shade(look.topC, 1), bottom: shade(look.bottomC, 2), keepClothes: own }));
+      // a top or trousers close to the person's skin tone reads as bare skin: push it lighter or darker
+      const apart = (hex: string) => {
+        const c = new THREE.Color(hex), sk = new THREE.Color(this.info.skin ?? "#c68d6a");
+        const a = c.getHSL({ h: 0, s: 0, l: 0 }), b = sk.getHSL({ h: 0, s: 0, l: 0 });
+        const dh = Math.min(Math.abs(a.h - b.h), 1 - Math.abs(a.h - b.h));
+        if (dh > 0.08 || Math.abs(a.l - b.l) > 0.22 || a.s < 0.08) return hex;
+        return "#" + c.setHSL(a.h, a.s, b.l > 0.5 ? Math.max(0.16, b.l - 0.34) : Math.min(0.9, b.l + 0.36)).getHexString();
+      };
+      const mats = personalize(m, e.scene, { skin: this.info.skin, hair: this.info.hair, top: apart(shade(look.topC, 1)), bottom: apart(shade(look.bottomC, 2)), keepClothes: own });
+      for (const mat of mats as THREE.MeshStandardMaterial[]) {
+        if (!charEnv) continue;
+        mat.envMap = charEnv;
+        mat.envMapIntensity = 0.55;
+        mat.roughness = Math.min(mat.roughness, 0.78);
+      }
+      this.modelMats.push(...mats);
     }
     if (this.holoTime) {
       const hm = holoMaterial(this.color.clone().offsetHSL(0, 0.1, 0.06), this.holoTime);
@@ -451,6 +479,7 @@ class Wisp {
       if (!this.seated && this.walk < 0.1) this.waveT = 2.4;
     }
     this.root.updateMatrixWorld(true);
+    relaxArms(this.rig, this.root);
     if (this.waveT > 0) {
       this.waveT = Math.max(0, this.waveT - dt);
       const k = Math.min(1, (2.4 - this.waveT) * 3, this.waveT * 3);
@@ -821,6 +850,11 @@ export class SoulWorld {
     // checking each shader for errors makes the browser wait for every compile in turn: that was most of the
     // freeze while the page loaded. Keep the check while developing only.
     this.renderer.debug.checkShaderErrors = !!import.meta.env?.DEV;
+    if (!charEnv) {
+      const pm = new THREE.PMREMGenerator(this.renderer);
+      charEnv = pm.fromScene(new RoomEnvironment(), 0.04).texture;
+      pm.dispose();
+    }
     // full sharpness on Retina screens; adaptRes() lowers it again on a device that can't keep up
     this.prMax = Math.min(devicePixelRatio, this.low ? 1.5 : 2);
     const pr = (this.pr = this.prMax);
@@ -899,6 +933,8 @@ export class SoulWorld {
     this.lights();
     this.hub();
     ISLAND_IDS.forEach((id, i) => this.buildIsle(id, i));
+    this.vineRims.push({ g: this.scene, r: HUB_R, seed: 299 });
+    this.vines();
     this.fireflies();
     this.petalSystem();
     this.floatingRocks();
@@ -1493,6 +1529,10 @@ export class SoulWorld {
     if (id !== "sunset")
       for (const x of [-1, 1]) this.lamp(g, x * (ISLE_R - 0.5) * 0.7, (ISLE_R - 0.5) * 0.7);
     this.pinkRim(g, ISLE_R, id === "sunset" ? 0xf6d2c4 : 0xf4c5d4, rnd);
+    // a waterfall spilling off the side into the clouds, on islands with water or greenery
+    const fall = WATERFALLS[id];
+    if (fall !== undefined) this.waterfall(g, ISLE_R, fall);
+    this.vineRims.push({ g, r: ISLE_R, seed: 300 + i });
     // hover / focus ring and the island's name for the overview
     const ring = new THREE.Mesh(
       new THREE.RingGeometry(ISLE_R + 0.15, ISLE_R + 0.45, 64),
@@ -1530,6 +1570,124 @@ export class SoulWorld {
    * The pink touches round an island's edge: a band of rosy paving, a low dark railing strung with
    * fairy lights (open at the front and back for paths and the bridge), and pink flower planters.
    */
+  vineRims: { g: THREE.Object3D; r: number; seed: number }[] = [];
+  /** A ribbon of falling water from the island's edge down into the clouds, with mist where it lands. */
+  waterfall(g: THREE.Object3D, R: number, ang: number) {
+    const W = 1.5, H = 12, cols = 10, rows = 30;
+    const pos: number[] = [], uv: number[] = [], idx: number[] = [];
+    const out = new THREE.Vector3(Math.cos(ang), 0, Math.sin(ang));
+    for (let r = 0; r <= rows; r++) {
+      const v = r / rows;
+      // pours out over the lip, then falls almost straight, flaring a little as it drops
+      const reach = R * 1.02 + 0.55 * Math.sqrt(v) + 0.25 * v;
+      const y = 0.05 - v * v * 0.6 * H - v * 0.4 * H;
+      const w = W * (1 + v * 0.9);
+      for (let c = 0; c <= cols; c++) {
+        const u = c / cols;
+        // the sheet curves round the rim, so it reads as water from any side, not a flat card
+        const a2 = ang + ((u - 0.5) * w) / reach;
+        pos.push(Math.cos(a2) * reach, y, Math.sin(a2) * reach);
+        uv.push(u, v);
+      }
+    }
+    for (let r = 0; r < rows; r++)
+      for (let c = 0; c < cols; c++) {
+        const a = r * (cols + 1) + c, b = a + cols + 1;
+        idx.push(a, b, a + 1, a + 1, b, b + 1);
+      }
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3));
+    geo.setAttribute("uv", new THREE.Float32BufferAttribute(uv, 2));
+    geo.setIndex(idx);
+    const mat = new THREE.ShaderMaterial({
+      transparent: true,
+      depthWrite: false,
+      side: THREE.DoubleSide,
+      uniforms: { uTime: this.uniforms.uTime, uPh: { value: ang * 3.7 } },
+      vertexShader: `varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
+      fragmentShader: `
+        uniform float uTime, uPh; varying vec2 vUv;
+        float h(float x){ return fract(sin(x * 127.1) * 43758.5); }
+        void main(){
+          float lane = floor(vUv.x * 9.0);
+          float speed = 1.4 + h(lane + uPh) * 0.8;
+          float s = fract(vUv.y * 5.0 - uTime * speed + h(lane * 3.1 + uPh));
+          float streak = smoothstep(0.0, 0.25, s) * (1.0 - smoothstep(0.55, 1.0, s));
+          vec3 col = mix(vec3(0.72, 0.88, 0.98), vec3(1.0), 0.45 + streak * 0.55);
+          float edge = smoothstep(0.0, 0.18, vUv.x) * smoothstep(1.0, 0.82, vUv.x);
+          float a = edge * (0.55 + streak * 0.4) * (1.0 - smoothstep(0.6, 1.0, vUv.y));
+          gl_FragColor = vec4(col, a);
+          #include <colorspace_fragment>
+        }`,
+    });
+    const mesh = new THREE.Mesh(geo, mat);
+    mesh.renderOrder = 1;
+    g.add(mesh);
+    // a spring between two rocks at the lip
+    for (const k of [-1, 1]) {
+      const st = new THREE.Mesh(new THREE.DodecahedronGeometry(0.2), new THREE.MeshStandardMaterial({ color: 0xcdb8c8, roughness: 0.95 }));
+      const a2 = ang + (k * (W * 0.62)) / R;
+      st.position.set(Math.cos(a2) * (R - 0.1), 0.1, Math.sin(a2) * (R - 0.1));
+      st.scale.set(1, 0.8, 1.1);
+      g.add(st);
+    }
+    // mist where the water meets the cloud layer
+    const mistTex = glowTexture();
+    for (let k = 0; k < 4; k++) {
+      const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: mistTex, color: 0xffffff, transparent: true, opacity: 0.55, depthWrite: false, fog: true }));
+      const a2 = ang + (k - 1.5) * 0.09;
+      sp.position.set(Math.cos(a2) * (R + 1.3), -8.6 - (k % 2) * 1.2, Math.sin(a2) * (R + 1.3));
+      sp.scale.setScalar(2.4 + (k % 3) * 0.8);
+      g.add(sp);
+    }
+  }
+  /** Leafy vines and little blossoms hanging from every island's rim: one instanced mesh for the whole world. */
+  vines() {
+    const strands: THREE.Matrix4[] = [], colors: THREE.Color[] = [], blooms: THREE.Matrix4[] = [];
+    const greens = [0x5f9a4e, 0x77ae5c, 0x4f8a48, 0x8cbf6a];
+    const m = new THREE.Matrix4(), q = new THREE.Quaternion(), e = new THREE.Euler();
+    for (const { g, r: R, seed } of this.vineRims) {
+      g.updateMatrixWorld(true);
+      const rnd = seeded(seed);
+      const n = Math.round(R * 4.2);
+      for (let k = 0; k < n; k++) {
+        const a = (k / n) * Math.PI * 2 + (rnd() - 0.5) * 0.2;
+        if (Math.abs(Math.sin(a)) > 0.93) continue; // keep the bridge ends clear
+        const len = 0.5 + rnd() * rnd() * 2.6;
+        const p = new THREE.Vector3(Math.cos(a) * R * 0.985, -0.42, Math.sin(a) * R * 0.985);
+        e.set((rnd() - 0.5) * 0.25, 0, (rnd() - 0.5) * 0.25);
+        q.setFromEuler(e);
+        m.compose(p.clone().setY(p.y - len / 2), q, new THREE.Vector3(1, len, 1)).premultiply(g.matrixWorld);
+        strands.push(m.clone());
+        colors.push(new THREE.Color(greens[k % greens.length]));
+        if (rnd() < 0.35) {
+          const tip = p.clone().setY(p.y - len * (0.55 + rnd() * 0.4));
+          m.compose(tip, q, new THREE.Vector3(1, 1, 1).multiplyScalar(0.7 + rnd() * 0.6)).premultiply(g.matrixWorld);
+          blooms.push(m.clone());
+        }
+      }
+    }
+    // a strand: a slim tapering stem with leaves alternating down it
+    const parts: THREE.BufferGeometry[] = [new THREE.CylinderGeometry(0.018, 0.008, 1, 5, 1)];
+    for (let i = 0; i < 6; i++) {
+      const leaf = new THREE.SphereGeometry(0.075, 6, 4);
+      leaf.scale(1, 0.45, 0.6);
+      leaf.rotateZ(i % 2 ? 0.6 : -0.6);
+      leaf.translate(i % 2 ? 0.05 : -0.05, 0.42 - i * 0.16, 0);
+      parts.push(leaf);
+    }
+    const strandGeo = mergeGeometries(parts.map((p) => p.toNonIndexed()));
+    const vines = new THREE.InstancedMesh(strandGeo, new THREE.MeshStandardMaterial({ roughness: 0.85 }), strands.length);
+    strands.forEach((mm, i) => {
+      vines.setMatrixAt(i, mm);
+      vines.setColorAt(i, colors[i]);
+    });
+    this.scene.add(vines);
+    const bloomGeo = new THREE.IcosahedronGeometry(0.09, 0);
+    const bl = new THREE.InstancedMesh(bloomGeo, new THREE.MeshStandardMaterial({ color: 0xff9fc4, roughness: 0.6, emissive: 0xff6fa8, emissiveIntensity: 0.25 }), blooms.length);
+    blooms.forEach((mm, i) => bl.setMatrixAt(i, mm));
+    this.scene.add(bl);
+  }
   pinkRim(g: THREE.Object3D, R: number, pave: number, rnd: () => number, gaps = [Math.PI / 2, -Math.PI / 2]) {
     const ring = new THREE.Mesh(new THREE.RingGeometry(R - 0.55, R - 0.06, 72), new THREE.MeshStandardMaterial({ color: pave, roughness: 0.9 }));
     ring.rotation.x = -Math.PI / 2;
