@@ -4,8 +4,6 @@ import { DIM_LABEL, type FaceView } from "./api";
 import { faceUrl } from "./faces";
 import { useStore } from "./store";
 
-const LOGO = "/EelmAPbh_400x400.jpg";
-
 export function Brand({ small = false }: { small?: boolean }) {
   return (
     <div className={"brand" + (small ? " small" : "")}>

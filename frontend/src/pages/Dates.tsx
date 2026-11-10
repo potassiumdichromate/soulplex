@@ -27,7 +27,7 @@ import { useIslandActivity, placeOf } from "../islandFeed";
 import { LiveDates } from "./LiveDates";
 import { ProfileSheet } from "./Discover";
 import { vitals, PROMPTS } from "../about";
-import { faceUrl, headUrl, bodyColors } from "../faces";
+import { headUrl, bodyColors } from "../faces";
 import { CoachCard } from "./Studio";
 
 const replayed = new Set<string>();

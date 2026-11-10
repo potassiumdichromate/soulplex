@@ -182,7 +182,7 @@ const QUICK: string[][] = [
 ];
 
 function Interview() {
-  const { messages, perform, load, mode, notify, busy, user } = useStore();
+  const { messages, perform, load, notify, busy } = useStore();
   const [draft, setDraft] = useState("");
   const [sending, setSending] = useState("");
   const end = useRef<HTMLDivElement>(null);

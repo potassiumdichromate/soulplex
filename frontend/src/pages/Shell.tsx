@@ -3,7 +3,7 @@ import { Globe2, Brain, Compass, Coffee, LineChart, Settings, ShieldCheck, LogOu
 import { useStore } from "../store";
 import { Brand, Wisp } from "../ui";
 import { withWorld } from "../world/WorldCanvas";
-import { faceUrl, headUrl, bodyColors } from "../faces";
+import { headUrl, bodyColors } from "../faces";
 const SetupWizard = lazy(() => import("./SetupWizard").then((m) => ({ default: m.SetupWizard })));
 import { startIslandFeed, stopIslandFeed } from "../islandFeed";
 

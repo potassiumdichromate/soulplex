@@ -997,7 +997,7 @@ function route(path: string, method: string, b: Body): any {
     const own = memories(u.id, true);
     const pool = [...partners(u)].filter(([p]) => !met.has(p.id)).map(([p, f]) => [previewCommon(own, f).length, p] as const).sort((x, y) => y[0] - x[0]);
     const started: any[] = [];
-    pool.slice(0, Math.min(3, b.count ?? 3)).forEach(([, p], i) => {
+    pool.slice(0, Math.min(3, b.count ?? 3)).forEach(([, p]) => {
       const [id, isNew] = queueScene(u, p, "auto");
       if (isNew) started.push({ id, partner: p.name });
     });

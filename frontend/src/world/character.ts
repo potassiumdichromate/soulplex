@@ -120,17 +120,6 @@ function withRim<M extends THREE.MeshStandardMaterial | THREE.MeshToonMaterial>(
   return mat;
 }
 
-/** Three flat bands of light: the cel-shaded anime look. */
-let toonRamp: THREE.DataTexture | null = null;
-function toonGradient() {
-  if (!toonRamp) {
-    toonRamp = new THREE.DataTexture(new Uint8Array([118, 118, 118, 255, 182, 182, 182, 255, 228, 228, 228, 255]), 3, 1, THREE.RGBAFormat);
-    toonRamp.minFilter = toonRamp.magFilter = THREE.NearestFilter;
-    toonRamp.needsUpdate = true;
-  }
-  return toonRamp;
-}
-
 /** Outlines cost a draw call per body part, so lite mode (phones, slow devices) turns them off. */
 export const charOptions = { ink: false }; // soft film-style shading: no ink outlines
 
@@ -196,7 +185,6 @@ export function buildCharacter(look: Look): Character {
     spec?.hair === 5
       ? new THREE.Color(hairHex(spec.hairColor)).lerp(new THREE.Color(look.skin ?? "#d6a07a"), 0.25)
       : new THREE.Color(look.hair ?? "#2b1d18");
-  const browC = spec && (spec.hair === 7 || spec.hair === 8) ? new THREE.Color(hairHex(spec.hairColor)) : hairC.clone().multiplyScalar(0.8);
   const P = presetFor(spec, look.seed);
   const col = (c: string | undefined, d: string) => new THREE.Color(c ?? d);
   const topC = col(P.topC, "#f3f0f6");

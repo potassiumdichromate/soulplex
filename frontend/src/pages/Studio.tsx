@@ -26,7 +26,6 @@ type Schema = {
   consents: { id: string; label: string; default: boolean }[];
 };
 type Answer = { field_id: string; option_ids: string[]; free_text: string; status: string; permission_scope?: string };
-type Cal = { scenario_id: string; owner_locked?: boolean; twin_locked?: boolean; twin_option?: string; twin_summary?: string; rating?: string; owner_option?: string };
 
 const STEPS = ["welcome", "age", "Q01_gender", "A01_vibe", "S02", "A03_weekend", "A04_life", "habits", "S01", "Q01_seeking", "ages", "Q01_distance", "Q02", "partner", "Q04", "Q05", "preview", "facts", "permissions", "ready"] as const;
 const GROUPS: Record<string, string[]> = {
@@ -69,7 +68,7 @@ function fieldOf(schema: Schema | null, id: string) {
 }
 
 export function Studio({ onClose }: { start?: number; onClose: () => void }) {
-  const { user, perform, busy, setUser, load } = useStore();
+  const { user, perform, busy, load } = useStore();
   const [schema, setSchema] = useState<Schema | null>(null);
   const [step, setStep] = useState(0);
   const [answers, setAnswers] = useState<Record<string, Answer>>({});
@@ -82,9 +81,6 @@ export function Studio({ onClose }: { start?: number; onClose: () => void }) {
   const [city, setCity] = useState(user?.city || "Dubai");
   const [preview, setPreview] = useState<string[]>([]);
   const [keep, setKeep] = useState<Record<string, boolean>>({});
-  const [calI, setCalI] = useState(0);
-  const [phase, setPhase] = useState<"owner" | "twin" | "review">("owner");
-  const [cals, setCals] = useState<Record<string, Cal>>({});
   const [grants, setGrants] = useState<Record<string, boolean>>({});
   const [ready, setReady] = useState("");
   const [fidelity, setFidelity] = useState("");
@@ -97,9 +93,6 @@ export function Studio({ onClose }: { start?: number; onClose: () => void }) {
       for (const a of state.answers as Answer[]) map[a.field_id] = a;
       setAnswers(map);
       setGrants(state.consents || {});
-      const saved: Record<string, Cal> = {};
-      for (const c of state.calibration as Cal[]) saved[c.scenario_id] = c;
-      setCals(saved);
       if (state.fidelity?.label) setFidelity(state.fidelity.label);
       const resume = STEPS.indexOf(state.studio?.step);
       if (resume > 0) setStep(resume);
@@ -110,7 +103,6 @@ export function Studio({ onClose }: { start?: number; onClose: () => void }) {
   const id = STEPS[step];
   const field = fieldOf(schema, id);
   const selected = answers[id]?.option_ids ?? [];
-  const cal = schema?.calibration[calI];
 
   const saveAnswer = (fieldId: string, optionIds: string[], status = "answered", free = note) =>
     perform(async () => {
@@ -178,46 +170,6 @@ export function Studio({ onClose }: { start?: number; onClose: () => void }) {
     if (id === "preview" && !preview.length) loadPreview();
   }, [id]);
 
-  const scene = cal;
-  const savedCal = scene ? cals[scene.id] : undefined;
-
-  const lockOwner = (optionId: string) =>
-    perform(async () => {
-      if (!scene) return;
-      const row = await api<Cal>("/calibration/" + scene.id + "/owner", "POST", {
-        option_ids: [optionId],
-        status: "answered",
-        free_text: note,
-      });
-      setCals((prev) => ({ ...prev, [scene.id]: row }));
-      setPhase("twin");
-      setNote("");
-    });
-
-  const runTwin = () =>
-    perform(async () => {
-      if (!scene) return;
-      try {
-        const row = await api<Cal>("/calibration/" + scene.id + "/run", "POST");
-        setCals((prev) => ({ ...prev, [scene.id]: row }));
-        setPhase("review");
-      } catch (err) {
-        setPhase("review");
-        setCals((prev) => ({ ...prev, [scene!.id]: { ...(prev[scene!.id] || { scenario_id: scene!.id }), twin_summary: err instanceof Error ? err.message : "Not completed." } }));
-      }
-    });
-
-  const rate = (rating: string) =>
-    perform(async () => {
-      if (!scene || !savedCal?.twin_option) return;
-      const row = await api<Cal>("/calibration/" + scene.id + "/review", "POST", { rating, correction: note });
-      setCals((prev) => ({ ...prev, [scene.id]: row }));
-      setNote("");
-      if (calI < (schema?.calibration.length ?? 1) - 1) {
-        setCalI(calI + 1);
-        setPhase("owner");
-      } else next();
-    });
 
   const finishPermissions = () =>
     perform(async () => {

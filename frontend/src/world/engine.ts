@@ -41,7 +41,7 @@ function cloudTexture() {
 }
 
 /** mr.doob-style cloud sea: many camera-facing cards merged into one geometry, with fog and wind. */
-function cloudSea(rnd: () => number, low: boolean, time: { value: number }, fog: THREE.FogExp2) {
+function cloudSea(rnd: () => number, low: boolean, time: { value: number }, fog: THREE.FogExp2, keepOut: { x: number; z: number; r: number }[]) {
   const clusters = low ? 46 : 90, per = low ? 16 : 30;
   const n = clusters * per;
   const center = new Float32Array(n * 4 * 3), corner = new Float32Array(n * 4 * 2), info = new Float32Array(n * 4 * 3);
@@ -51,16 +51,18 @@ function cloudSea(rnd: () => number, low: boolean, time: { value: number }, fog:
   for (let c = 0; c < clusters; c++) {
     // most clusters form a layer below the islands; a ring of tall ones stands on the horizon
     const tall = c % 5 === 0;
-    // low banks drift over the water (y = -14) around and between the islands; tall cumulus ring the horizon
-    const a = rnd() * Math.PI * 2, r = tall ? 200 + rnd() * 220 : 45 + Math.sqrt(rnd()) * 300;
-    const cx = Math.cos(a) * r, cz = Math.sin(a) * r, cy = tall ? -10 + rnd() * 16 : -12 + rnd() * 7;
-    const w = tall ? 30 + rnd() * 30 : 16 + rnd() * 26;
+    // low banks float in the gap between the island undersides (about y = -8) and the water (y = -14),
+    // around and between the islands; tall cumulus ring the horizon
+    const near = !tall && c % 3 === 0;
+    const a = rnd() * Math.PI * 2, r = tall ? 240 + rnd() * 200 : near ? 16 + rnd() * 46 : 60 + Math.sqrt(rnd()) * 330;
+    const cx = Math.cos(a) * r, cz = Math.sin(a) * r, cy = tall ? -12 + rnd() * 14 : -13 + rnd() * 2;
+    const w = tall ? 26 + rnd() * 30 : near ? 8 + rnd() * 10 : 18 + rnd() * 30;
     for (let p = 0; p < per; p++, k++) {
       // flattened gaussian spread: wide, with a domed top
       const gx = (rnd() + rnd() + rnd() - 1.5) * w, gz = (rnd() + rnd() + rnd() - 1.5) * w * 0.7;
       const dome = 1 - Math.min(1, (gx * gx) / (w * w * 0.6));
-      const gy = rnd() * (tall ? 16 : 7) * dome;
-      const size = (tall ? 16 : 11) + rnd() * 12;
+      const gy = rnd() * (tall ? 16 : near ? 2.5 : 5) * dome;
+      const size = tall ? 16 + rnd() * 12 : near ? 4 + rnd() * 4 : 8 + rnd() * 8;
       const spin = rnd() * Math.PI * 2;
       for (let v = 0; v < 4; v++) {
         const i = k * 4 + v;
@@ -84,6 +86,7 @@ function cloudSea(rnd: () => number, low: boolean, time: { value: number }, fog:
       map: { value: cloudTexture() },
       uTime: time,
       uSpan: { value: span },
+      uKeep: { value: keepOut.map((k) => new THREE.Vector3(k.x, k.z, k.r)) },
       uFog: { value: fog.color },
       uDensity: { value: fog.density * 0.4 },
       uLight: { value: new THREE.Color(0xfffafc) },
@@ -93,17 +96,26 @@ function cloudSea(rnd: () => number, low: boolean, time: { value: number }, fog:
       attribute vec2 corner;
       attribute vec3 info;
       uniform float uTime, uSpan;
+      uniform vec3 uKeep[${keepOut.length}];
       varying vec2 vUv;
-      varying float vShade, vFog, vNear;
+      varying float vShade, vFog, vNear, vClear;
       uniform float uDensity;
       void main() {
         vec3 c = position;
         // the wind: everything drifts one way and wraps round, so the sea never runs out
         c.xz = mod(c.xz + vec2(1.6, 0.7) * uTime + uSpan * 0.5, uSpan) - uSpan * 0.5;
+        // fade out (and shrink) any card that drifts over an island or the hub, so clouds hug the islands
+        // from around and below but never cover them
+        float clear = 1.0;
+        for (int i = 0; i < ${keepOut.length}; i++) {
+          float d = distance(c.xz, uKeep[i].xy) - uKeep[i].z;
+          clear = min(clear, smoothstep(info.x * 0.35 + 1.0, info.x * 0.9 + 6.0, d));
+        }
+        vClear = clear;
         vec4 mv = modelViewMatrix * vec4(c, 1.0);
-        if (mv.z > -2.0) { gl_Position = vec4(2.0, 2.0, 2.0, 1.0); return; } // behind the camera: skip
+        if (mv.z > -2.0 || clear < 0.01) { gl_Position = vec4(2.0, 2.0, 2.0, 1.0); return; } // behind the camera, or hidden
         float s = sin(info.y), co = cos(info.y);
-        vec2 q = mat2(co, -s, s, co) * corner * info.x;
+        vec2 q = mat2(co, -s, s, co) * corner * info.x * (0.6 + 0.4 * clear);
         mv.xy += q;
         gl_Position = projectionMatrix * mv;
         vUv = corner * 0.5 + 0.5;
@@ -117,12 +129,12 @@ function cloudSea(rnd: () => number, low: boolean, time: { value: number }, fog:
       uniform sampler2D map;
       uniform vec3 uFog, uLight, uShade;
       varying vec2 vUv;
-      varying float vShade, vFog, vNear;
+      varying float vShade, vFog, vNear, vClear;
       void main() {
         vec4 t = texture2D(map, vUv);
         vec3 col = mix(uShade, uLight, vShade);
         col = mix(col, uFog, vFog * 0.7);
-        float a = min(1.0, t.a * 1.7) * vNear * (1.0 - vFog * 0.35);
+        float a = min(1.0, t.a * 1.7) * vNear * vClear * (1.0 - vFog * 0.35);
         if (a < 0.004) discard;
         gl_FragColor = vec4(col, a);
         #include <colorspace_fragment>
@@ -304,9 +316,6 @@ class Wisp {
   marker: THREE.Mesh;
   legs: { hip: THREE.Group; knee: THREE.Group }[] = [];
   arms: { shoulder: THREE.Group; elbow: THREE.Group }[] = [];
-  ghostLegs: { hip: THREE.Group; knee: THREE.Group }[] = [];
-  ghostArms: { shoulder: THREE.Group; elbow: THREE.Group }[] = [];
-  ghostHead: THREE.Group | null = null;
   target = new THREE.Vector3();
   vel = new THREE.Vector3();
   phase = Math.random() * 10;
@@ -809,7 +818,12 @@ export class SoulWorld {
 
   constructor(public host: HTMLElement) {
     this.renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "high-performance" });
-    const pr = Math.min(devicePixelRatio, this.low ? 1.25 : 1.6);
+    // checking each shader for errors makes the browser wait for every compile in turn: that was most of the
+    // freeze while the page loaded. Keep the check while developing only.
+    this.renderer.debug.checkShaderErrors = !!import.meta.env?.DEV;
+    // full sharpness on Retina screens; adaptRes() lowers it again on a device that can't keep up
+    this.prMax = Math.min(devicePixelRatio, this.low ? 1.5 : 2);
+    const pr = (this.pr = this.prMax);
     this.renderer.setPixelRatio(pr);
     this.renderer.setSize(host.clientWidth, host.clientHeight);
     this.renderer.toneMapping = THREE.NeutralToneMapping; // keeps the pastels' colour (ACES greys them)
@@ -830,7 +844,10 @@ export class SoulWorld {
     this.controls.autoRotateSpeed = 0.25;
     this.controls.enabled = false;
 
-    this.composer = new EffectComposer(this.renderer);
+    // render the scene into a multisampled target, so post-processing keeps the edges smooth
+    // (a plain target loses the canvas's antialiasing and everything looks soft and jagged)
+    const rt = new THREE.WebGLRenderTarget(host.clientWidth * pr, host.clientHeight * pr, { type: THREE.HalfFloatType, samples: this.low ? 2 : 4 });
+    this.composer = new EffectComposer(this.renderer, rt);
     this.composer.setPixelRatio(pr);
     this.composer.setSize(host.clientWidth, host.clientHeight);
     this.composer.addPass(new RenderPass(this.scene, this.camera));
@@ -840,7 +857,37 @@ export class SoulWorld {
 
     this.build();
     this.bind();
-    this.loop();
+    // compile every shader in the background before the first frame, so the page stays responsive while it loads
+    let started = false;
+    const go = () => {
+      if (started || this.disposed) return;
+      started = true;
+      this.clock.getDelta();
+      this.loop();
+    };
+    const r = this.renderer as THREE.WebGLRenderer & { compileAsync?: (s: THREE.Object3D, c: THREE.Camera) => Promise<unknown> };
+    if (r.compileAsync) r.compileAsync(this.scene, this.camera).then(go, go);
+    else go();
+    setTimeout(go, 2500); // never wait longer than this
+  }
+  pr = 1;
+  prMax = 1;
+  frameMs: number[] = [];
+  /** Adaptive resolution: drop the pixel ratio when frames are slow, raise it back when there is headroom. */
+  adaptRes(dt: number) {
+    this.frameMs.push(dt * 1000);
+    if (this.frameMs.length < 90) return;
+    const sorted = this.frameMs.sort((a, b) => a - b);
+    const typical = sorted[Math.floor(sorted.length * 0.6)];
+    this.frameMs = [];
+    let next = this.pr;
+    if (typical > 24 && this.pr > 1) next = Math.max(1, this.pr - 0.25);
+    else if (typical < 15 && this.pr < this.prMax) next = Math.min(this.prMax, this.pr + 0.25);
+    if (next === this.pr || document.hidden) return;
+    this.pr = next;
+    this.renderer.setPixelRatio(next);
+    this.composer.setPixelRatio(next);
+    this.onResize();
   }
 
   /* ----------------------------- build ----------------------------- */
@@ -848,7 +895,7 @@ export class SoulWorld {
     this.scene.fog = new THREE.FogExp2(0xf0e2f2, 0.0014);
     this.sky();
     this.moon(); // a soft daytime sun
-    this.ocean(); // a sea of clouds below the islands
+    this.ocean(); // the water below the islands
     this.lights();
     this.hub();
     ISLAND_IDS.forEach((id, i) => this.buildIsle(id, i));
@@ -884,40 +931,6 @@ export class SoulWorld {
         }`,
     });
     this.scene.add(new THREE.Mesh(new THREE.SphereGeometry(1300, 48, 24), m));
-  }
-  stars() {
-    const n = this.low ? 800 : 1800,
-      pos = new Float32Array(n * 3),
-      size = new Float32Array(n),
-      ph = new Float32Array(n);
-    for (let i = 0; i < n; i++) {
-      const u = Math.random(),
-        v = rand(0.08, 1);
-      const th = u * Math.PI * 2,
-        y = v;
-      const r = Math.sqrt(1 - y * y);
-      pos.set([Math.cos(th) * r * 1150, y * 1150, Math.sin(th) * r * 1150], i * 3);
-      size[i] = Math.random() < 0.06 ? rand(3.5, 5.5) : rand(1.2, 2.6);
-      ph[i] = Math.random() * 20;
-    }
-    const g = new THREE.BufferGeometry();
-    g.setAttribute("position", new THREE.BufferAttribute(pos, 3));
-    g.setAttribute("aSize", new THREE.BufferAttribute(size, 1));
-    g.setAttribute("aPh", new THREE.BufferAttribute(ph, 1));
-    const m = new THREE.ShaderMaterial({
-      uniforms: { ...this.uniforms, uPR: { value: this.renderer.getPixelRatio() } },
-      vertexShader: `attribute float aSize; attribute float aPh; uniform float uTime; uniform float uPR; varying float vA;
-        void main(){ vec4 mv = modelViewMatrix*vec4(position,1.); gl_Position = projectionMatrix*mv;
-        float tw = .65+.35*sin(uTime*1.3+aPh); gl_PointSize = aSize*uPR*tw;
-        vA = smoothstep(0.05,0.35,normalize(position).y)*tw; }`,
-      fragmentShader: `varying float vA; void main(){ float d=length(gl_PointCoord-.5); if(d>.5) discard;
-        gl_FragColor = vec4(vec3(1.,.95,.9)*1.3, smoothstep(.5,.0,d)*vA); }`,
-      transparent: true,
-      depthWrite: false,
-      fog: false,
-      blending: THREE.AdditiveBlending,
-    });
-    this.scene.add(new THREE.Points(g, m));
   }
   moon() {
     const p = SUN_DIR.clone().multiplyScalar(1000);
@@ -1650,27 +1663,6 @@ export class SoulWorld {
     });
   }
 
-  house(g: THREE.Object3D, z: number, wall: number, roofC: number, awning: [string, string]) {
-    const body = this.box(2.6, 1.8, 2, wall);
-    body.position.set(0, 0.9, z);
-    const roof = new THREE.Mesh(new THREE.ConeGeometry(2.15, 1.1, 4), new THREE.MeshStandardMaterial({ color: roofC, flatShading: true }));
-    roof.rotation.y = Math.PI / 4;
-    roof.position.set(0, 2.35, z);
-    roof.castShadow = true;
-    const win1 = this.box(0.7, 0.6, 0.05, 0);
-    win1.material = this.windowMat();
-    win1.position.set(-0.65, 1.05, z + 1.01);
-    const win2 = win1.clone();
-    win2.position.x = 0.65;
-    const door = this.box(0.5, 0.9, 0.06, 0x6b3f36);
-    door.position.set(0, 0.45, z + 1.02);
-    const aw = this.awning(awning, 2.8, 0.8);
-    aw.position.set(0, 1.62, z + 1.32);
-    aw.rotation.x = -0.75;
-    const ch = this.box(0.3, 0.6, 0.3, 0x8a5a4c);
-    ch.position.set(0.7, 2.6, z - 0.4);
-    g.add(body, roof, win1, win2, door, aw, ch);
-  }
 
   terraceLights(g: THREE.Object3D, z: number) {
     for (const x of [-4.1, 4.1]) {
@@ -3380,7 +3372,8 @@ export class SoulWorld {
     // a sea of soft clouds in the style of mr.doob's WebGL clouds: thousands of textured cards,
     // all in one mesh (one draw call), each turned to face the camera, faded by fog with distance
     // and drifting slowly on the wind. Cards gather in clusters, so they read as cumulus.
-    this.scene.add(cloudSea(rnd, this.low, this.uniforms.uTime, this.scene.fog as THREE.FogExp2));
+    const keepOut = [{ x: 0, z: 0, r: HUB_R }, ...[...this.isles.values()].map((i) => ({ x: i.group.position.x, z: i.group.position.z, r: ISLE_R }))];
+    this.scene.add(cloudSea(rnd, this.low, this.uniforms.uTime, this.scene.fog as THREE.FogExp2, keepOut));
     // little pink hearts floating up between the islands
     const heartShape = new THREE.Shape();
     heartShape.moveTo(0, -0.5);
@@ -4092,6 +4085,7 @@ export class SoulWorld {
     }
     this.controls.update();
     this.composer.render();
+    if (!this.manual) this.adaptRes(dt);
   }
 
   dispose() {

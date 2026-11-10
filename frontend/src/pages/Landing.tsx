@@ -4,7 +4,7 @@ import { api } from "../api";
 import { useStore } from "../store";
 import { Brand, Wisp } from "../ui";
 import { withWorld } from "../world/WorldCanvas";
-import { faceUrl, headUrl, bodyColors, type FaceSpec } from "../faces";
+import { headUrl, bodyColors, type FaceSpec } from "../faces";
 import howArt from "../assets/landing/how.webp";
 
 const L: Record<string, [number, Partial<FaceSpec>]> = {
