@@ -415,3 +415,43 @@ uniform vec3 uRefSkin, uSkin, uHair, uTop, uBot;
   });
   return mats;
 }
+
+/*
+ * Small gestures layered on top of a model's own clips, applied after the mixer each frame:
+ * a wave hello and a listening nod. They rotate bones about axes in world space, so they work
+ * whatever the rig's local bone orientations are.
+ */
+const _q = new THREE.Quaternion(), _qp = new THREE.Quaternion(), _ax = new THREE.Vector3();
+function turn(bone: THREE.Object3D | undefined, axis: THREE.Vector3, angle: number) {
+  if (!bone?.parent || !angle) return;
+  bone.parent.getWorldQuaternion(_qp);
+  _q.setFromAxisAngle(axis, angle);
+  // new world rotation = q * old world rotation, expressed in the parent's frame
+  bone.quaternion.premultiply(_qp.clone().invert().multiply(_q).multiply(_qp));
+  bone.updateMatrixWorld(true);
+}
+export type Rig = Record<string, THREE.Bone>;
+export function rigOf(obj: THREE.Object3D): Rig {
+  const r: Rig = {};
+  obj.traverse((o) => {
+    if ((o as THREE.Bone).isBone) r[o.name.replace(/^mixamorig:?/i, "")] = o as THREE.Bone;
+  });
+  return r;
+}
+/** Raise the right hand and wave. k: 0..1 how far into the gesture; t: time for the waving. */
+export function wave(rig: Rig, root: THREE.Object3D, k: number, t: number) {
+  if (k <= 0) return;
+  root.getWorldQuaternion(_qp);
+  const fwd = _ax.set(0, 0, 1).applyQuaternion(_qp).clone();
+  const side = new THREE.Vector3(1, 0, 0).applyQuaternion(_qp);
+  turn(rig.RightArm, fwd, -2.25 * k); // the arm swings up and out to the side (the right hand is on -x)
+  turn(rig.RightArm, side, -0.3 * k); // a little forward, toward the person greeted
+  turn(rig.RightForeArm, fwd, (-0.5 + Math.sin(t * 11) * 0.4) * k); // the forearm waves
+}
+/** A gentle listening nod. k: 0..1 strength. */
+export function nod(rig: Rig, root: THREE.Object3D, k: number, t: number, ph: number) {
+  if (k <= 0) return;
+  root.getWorldQuaternion(_qp);
+  const side = _ax.set(1, 0, 0).applyQuaternion(_qp).clone();
+  turn(rig.Head, side, (Math.max(0, Math.sin(t * 2.4 + ph)) * 0.16 + 0.03) * k);
+}

@@ -68,7 +68,7 @@ def spec_for(gender: str, seed: str) -> dict:
     return {
         "skin": (n >> 1) % 6,
         "hair": hair,
-        "hairColor": (n >> 3) % 7,
+        "hairColor": (n >> 3) % 2,  # black or brown
         "eyes": eyes,
         "brows": (n >> 5) % 3,
         "mouth": (n >> 7) % 3,

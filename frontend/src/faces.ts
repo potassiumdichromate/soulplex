@@ -28,7 +28,13 @@ export function irisForSeed(seed: string) {
   return irisFor(h >>> 0);
 }
 
-export const HAIR_COLOR = ["#1c1414", "#3a2416", "#6b4226", "#a8622c", "#dcb26c", "#a3a1ad", "#7d4bd8"];
+/** Hair is black or brown. */
+export const HAIR_COLOR = ["#1c1414", "#4a2c1a"];
+/** Older profiles may hold colour numbers from the earlier, longer palette: map them to black or brown. */
+const HAIR_MAP = [0, 1, 1, 1, 1, 0, 0];
+export function hairHex(i: number | undefined) {
+  return HAIR_COLOR[HAIR_MAP[i ?? 0] ?? 0];
+}
 export const OUTFIT = ["#ff7eb6", "#7ec8ff", "#ffd58a", "#7ef0c9", "#a98bff", "#f3efe6"];
 export const HAIR_LABEL = ["Short", "Long", "Bun", "Curly", "Side part", "Buzz", "Wavy", "Turban", "Hijab"];
 export const OPTIONS: { key: keyof FaceSpec; label: string; choices: string[] }[] = [
@@ -64,7 +70,7 @@ export function defaultSpec(seed: string, gender?: string): FaceSpec {
   const base = {
     skin: roll() % 6,
     hair,
-    hairColor: roll() % 7,
+    hairColor: roll() % 2,
     eyes,
     brows: roll() % 3,
     mouth: roll() % 3,
@@ -85,7 +91,7 @@ function full(spec: Partial<FaceSpec>, seed = "x"): FaceSpec {
 export function avatarSVG(specIn: Partial<FaceSpec>, hue = 320, seed = "x", headOnly = false): string {
   const s = full(specIn, seed);
   const skin = SKIN[s.skin] ?? SKIN[0];
-  const hc = HAIR_COLOR[s.hairColor] ?? HAIR_COLOR[0];
+  const hc = hairHex(s.hairColor);
   const out = OUTFIT[s.outfit] ?? OUTFIT[0];
   const bg1 = `hsl(${hue} 85% 72%)`, bg2 = `hsl(${(hue + 40) % 360} 70% 32%)`;
   const p: string[] = [];
@@ -298,7 +304,7 @@ export function bodyColors(face: FaceView | undefined | null, seed: string, hue:
   if (cp) {
     // a cast member: the 3D character is dressed and styled exactly like their character sheet
     const spec = { ...defaultSpec(seed, gender), ...cp.face, facial: cp.face.facial ?? 0, accessory: cp.face.accessory ?? 0, skin: cp.art?.skin ?? 1, outfit: cp.outfit, look: PRESETS.indexOf(cp) + 1 } as FaceSpec;
-    return { skin: SKIN[spec.skin], hair: HAIR_COLOR[spec.hairColor] ?? HAIR_COLOR[0], outfit: OUTFIT[spec.outfit], spec };
+    return { skin: SKIN[spec.skin], hair: hairHex(spec.hairColor), outfit: OUTFIT[spec.outfit], spec };
   }
   // a designed face without a chosen outfit style gets one that suits its hairstyle ("auto")
   const s = { ...defaultSpec(seed, gender), facial: 0, ...(f.kind === "illustrated" ? { look: 0, ...f.spec } : {}) } as FaceSpec;
@@ -308,7 +314,7 @@ export function bodyColors(face: FaceView | undefined | null, seed: string, hue:
   const covered = s.hair === 7 || s.hair === 8;
   return {
     skin: SKIN[s.skin] ?? SKIN[2],
-    hair: covered ? OUTFIT[s.outfit] : HAIR_COLOR[s.hairColor] ?? HAIR_COLOR[0],
+    hair: covered ? OUTFIT[s.outfit] : hairHex(s.hairColor),
     hairStyle: s.hair,
     outfit: OUTFIT[s.outfit] ?? OUTFIT[0],
     spec: s,

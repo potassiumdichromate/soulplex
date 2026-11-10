@@ -15,8 +15,124 @@ import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
 import { DATE_TYPES } from "../dateTypes";
 import type { FaceSpec } from "../faces";
 import { buildCharacter, holoMaterial } from "./character";
-import { modelFor, findClip, instance, personalize } from "./models";
-import { fitFor, presetFor } from "../characters";
+import { modelFor, findClip, instance, personalize, rigOf, wave, nod, type Rig } from "./models";
+import { fitFor, hashStr, presetFor } from "../characters";
+
+/** A soft cloud puff: overlapping round blobs, white with a feathered edge. */
+function cloudTexture() {
+  const c = document.createElement("canvas");
+  c.width = c.height = 128;
+  const g = c.getContext("2d")!;
+  const r = seeded(11);
+  for (let i = 0; i < 26; i++) {
+    const x = 64 + (r() - 0.5) * 60, y = 70 + (r() - 0.5) * 34, rad = 14 + r() * 26;
+    const gr = g.createRadialGradient(x, y, 0, x, y, rad);
+    gr.addColorStop(0, "rgba(255,255,255,0.55)");
+    gr.addColorStop(0.6, "rgba(255,255,255,0.22)");
+    gr.addColorStop(1, "rgba(255,255,255,0)");
+    g.fillStyle = gr;
+    g.beginPath();
+    g.arc(x, y, rad, 0, Math.PI * 2);
+    g.fill();
+  }
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  return t;
+}
+
+/** mr.doob-style cloud sea: many camera-facing cards merged into one geometry, with fog and wind. */
+function cloudSea(rnd: () => number, low: boolean, time: { value: number }, fog: THREE.FogExp2) {
+  const clusters = low ? 46 : 90, per = low ? 16 : 30;
+  const n = clusters * per;
+  const center = new Float32Array(n * 4 * 3), corner = new Float32Array(n * 4 * 2), info = new Float32Array(n * 4 * 3);
+  const index: number[] = [];
+  const span = 900; // the wind wraps cards around inside this square
+  let k = 0;
+  for (let c = 0; c < clusters; c++) {
+    // most clusters form a layer below the islands; a ring of tall ones stands on the horizon
+    const tall = c % 5 === 0;
+    // low banks drift over the water (y = -14) around and between the islands; tall cumulus ring the horizon
+    const a = rnd() * Math.PI * 2, r = tall ? 200 + rnd() * 220 : 45 + Math.sqrt(rnd()) * 300;
+    const cx = Math.cos(a) * r, cz = Math.sin(a) * r, cy = tall ? -10 + rnd() * 16 : -12 + rnd() * 7;
+    const w = tall ? 30 + rnd() * 30 : 16 + rnd() * 26;
+    for (let p = 0; p < per; p++, k++) {
+      // flattened gaussian spread: wide, with a domed top
+      const gx = (rnd() + rnd() + rnd() - 1.5) * w, gz = (rnd() + rnd() + rnd() - 1.5) * w * 0.7;
+      const dome = 1 - Math.min(1, (gx * gx) / (w * w * 0.6));
+      const gy = rnd() * (tall ? 16 : 7) * dome;
+      const size = (tall ? 16 : 11) + rnd() * 12;
+      const spin = rnd() * Math.PI * 2;
+      for (let v = 0; v < 4; v++) {
+        const i = k * 4 + v;
+        center.set([cx + gx, cy + gy, cz + gz], i * 3);
+        corner.set([v & 1 ? 1 : -1, v & 2 ? 1 : -1], i * 2);
+        info.set([size, spin, gy / (tall ? 16 : 7)], i * 3); // size, spin, height in the cloud
+      }
+      const o = k * 4;
+      index.push(o, o + 1, o + 2, o + 2, o + 1, o + 3);
+    }
+  }
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute("position", new THREE.BufferAttribute(center, 3));
+  geo.setAttribute("corner", new THREE.BufferAttribute(corner, 2));
+  geo.setAttribute("info", new THREE.BufferAttribute(info, 3));
+  geo.setIndex(index);
+  const mat = new THREE.ShaderMaterial({
+    transparent: true,
+    depthWrite: false,
+    uniforms: {
+      map: { value: cloudTexture() },
+      uTime: time,
+      uSpan: { value: span },
+      uFog: { value: fog.color },
+      uDensity: { value: fog.density * 0.4 },
+      uLight: { value: new THREE.Color(0xfffafc) },
+      uShade: { value: new THREE.Color(0xefcfe8) },
+    },
+    vertexShader: /* glsl */ `
+      attribute vec2 corner;
+      attribute vec3 info;
+      uniform float uTime, uSpan;
+      varying vec2 vUv;
+      varying float vShade, vFog, vNear;
+      uniform float uDensity;
+      void main() {
+        vec3 c = position;
+        // the wind: everything drifts one way and wraps round, so the sea never runs out
+        c.xz = mod(c.xz + vec2(1.6, 0.7) * uTime + uSpan * 0.5, uSpan) - uSpan * 0.5;
+        vec4 mv = modelViewMatrix * vec4(c, 1.0);
+        if (mv.z > -2.0) { gl_Position = vec4(2.0, 2.0, 2.0, 1.0); return; } // behind the camera: skip
+        float s = sin(info.y), co = cos(info.y);
+        vec2 q = mat2(co, -s, s, co) * corner * info.x;
+        mv.xy += q;
+        gl_Position = projectionMatrix * mv;
+        vUv = corner * 0.5 + 0.5;
+        // sunlit tops, soft pink-lavender undersides
+        vShade = clamp(info.z * 0.8 + (corner.y * 0.5 + 0.5) * 0.35, 0.0, 1.0);
+        float d = -mv.z;
+        vFog = 1.0 - exp(-uDensity * uDensity * d * d);
+        vNear = smoothstep(4.0, 30.0, d); // cards right in front of the camera fade out, as in the original
+      }`,
+    fragmentShader: /* glsl */ `
+      uniform sampler2D map;
+      uniform vec3 uFog, uLight, uShade;
+      varying vec2 vUv;
+      varying float vShade, vFog, vNear;
+      void main() {
+        vec4 t = texture2D(map, vUv);
+        vec3 col = mix(uShade, uLight, vShade);
+        col = mix(col, uFog, vFog * 0.7);
+        float a = min(1.0, t.a * 1.7) * vNear * (1.0 - vFog * 0.35);
+        if (a < 0.004) discard;
+        gl_FragColor = vec4(col, a);
+        #include <colorspace_fragment>
+      }`,
+  });
+  const mesh = new THREE.Mesh(geo, mat);
+  mesh.frustumCulled = false;
+  mesh.renderOrder = -1; // behind the islands' own transparent bits
+  return mesh;
+}
 
 export type WorldMode = "landing" | "home" | "date" | "calm";
 export type AgentInfo = { id: string; name: string; hue: number; self?: boolean; face?: string; skin?: string; hair?: string; hairStyle?: number; outfit?: string; spec?: FaceSpec; holo?: boolean };
@@ -202,6 +318,10 @@ class Wisp {
   pose: "sit" | "stand" = "sit";
   follow = false; // walking-date mode: pinned is a moving target
   greet = 0;
+  rig: Rig | null = null;
+  waveT = 0; // seconds left in a wave hello
+  nextWave = 10 + Math.random() * 30;
+  nodK = 0;
   wasSeated = false;
   color: THREE.Color;
   speed = rand(0.75, 1.0);
@@ -276,7 +396,13 @@ class Wisp {
       // one shared model, but each person keeps their own skin tone, hair colour and outfit colours
       const look = presetFor(this.info.spec, this.info.id);
       const own = e.file.replace(/\.glb$/i, "") === look.id;
-      this.modelMats.push(...personalize(m, e.scene, { skin: this.info.skin, hair: this.info.hair, top: look.topC, bottom: look.bottomC, keepClothes: own }));
+      // everyone wearing the same style gets their own shade of it, so no two outfits match exactly
+      const shade = (hex: string, k: number) => {
+        const c = new THREE.Color(hex);
+        const hsl = c.getHSL({ h: 0, s: 0, l: 0 });
+        return "#" + c.setHSL((hsl.h + ((hashStr(this.info.id + k) % 100) / 100 - 0.5) * 0.16 + 1) % 1, Math.min(1, hsl.s * (0.9 + (hashStr(this.info.id + "s" + k) % 30) / 100)), hsl.l).getHexString();
+      };
+      this.modelMats.push(...personalize(m, e.scene, { skin: this.info.skin, hair: this.info.hair, top: shade(look.topC, 1), bottom: shade(look.bottomC, 2), keepClothes: own }));
     }
     if (this.holoTime) {
       const hm = holoMaterial(this.color.clone().offsetHSL(0, 0.1, 0.06), this.holoTime);
@@ -296,6 +422,7 @@ class Wisp {
       if (!this.hips && (o as THREE.Bone).isBone && /hips|pelvis/i.test(o.name)) this.hips = o;
     });
     this.mixer = new THREE.AnimationMixer(m);
+    this.rig = rigOf(m);
     this.clips = {
       idle: findClip(e.clips, ["idle", "standing", "stand", "breathing"]),
       walk: findClip(e.clips, ["walking", "walk", "running", "run"]),
@@ -304,6 +431,25 @@ class Wisp {
       talk: findClip(e.clips, ["talking", "talk"]),
     };
     this.state = "";
+  }
+  /** A wave hello when a date begins (and now and then on the islands), and nods while listening. */
+  gestures(dt: number, t: number, talking: boolean) {
+    if (!this.rig || !this.model || this.holoTime) return;
+    if (this.greet > 1 && this.waveT <= 0) this.waveT = 2.4;
+    this.nextWave -= dt;
+    if (this.nextWave < 0) {
+      this.nextWave = 30 + Math.random() * 45;
+      if (!this.seated && this.walk < 0.1) this.waveT = 2.4;
+    }
+    this.root.updateMatrixWorld(true);
+    if (this.waveT > 0) {
+      this.waveT = Math.max(0, this.waveT - dt);
+      const k = Math.min(1, (2.4 - this.waveT) * 3, this.waveT * 3);
+      wave(this.rig, this.root, k * k * (3 - 2 * k), t);
+    }
+    const listening = !!this.lookAt && !talking && this.walk < 0.2 && this.waveT <= 0;
+    this.nodK = THREE.MathUtils.lerp(this.nodK, listening ? 1 : 0, Math.min(1, dt * 3));
+    nod(this.rig, this.root, this.nodK, t, this.talkPh);
   }
   play(name: string) {
     if (!this.mixer || name === this.state) return;
@@ -536,6 +682,7 @@ class Wisp {
       this.play(want);
       if (this.action && this.state === "walk") this.action.timeScale = THREE.MathUtils.clamp(this.vel.length() / 0.85, 0.6, 1.7);
       this.mixer.update(dt * motion);
+      this.gestures(dt * motion, t, talking);
     }
     const m = this.marker.material as THREE.MeshBasicMaterial;
     if (this.info.self) m.opacity = 0.65 + Math.sin(t * 3) * 0.25;
@@ -3229,48 +3376,11 @@ export class SoulWorld {
     }
   }
   clouds() {
-    // fluffy pastel cumulus: clusters of soft round puffs, drifting slowly round the world
     const rnd = seeded(5);
-    const mats = [0xffffff, 0xffe9f2, 0xfbd9e8, 0xf3e3fb].map((c) => new THREE.MeshStandardMaterial({ color: c, emissive: 0xffe0ee, emissiveIntensity: 0.4, roughness: 1 }));
-    const geo = new THREE.SphereGeometry(1, 14, 10);
-    const n = this.low ? 18 : 30;
-    for (let i = 0; i < n; i++) {
-      const cl = new THREE.Group();
-      const puffs = 5 + Math.floor(rnd() * 5);
-      const len = 6 + rnd() * 10;
-      for (let k = 0; k < puffs; k++) {
-        const t = k / (puffs - 1);
-        const r = (1.6 + Math.sin(t * Math.PI) * 2.6) * (0.8 + rnd() * 0.4);
-        const m = new THREE.Mesh(geo, mats[k % mats.length]);
-        m.scale.set(r, r * 0.8, r);
-        m.position.set((t - 0.5) * len * 2, r * 0.35 + rnd() * 0.8, (rnd() - 0.5) * 3);
-        cl.add(m);
-      }
-      // a flat soft base so the cloud doesn't look like separate balls
-      const base = new THREE.Mesh(geo, mats[3]);
-      base.scale.set(len * 1.15, 1.2, 2.6);
-      cl.add(base);
-      const near = i < n * 0.45;
-      const a = rnd() * Math.PI * 2, r = near ? 48 + rnd() * 40 : 110 + rnd() * 140;
-      const y = near ? -11 + rnd() * 7 : -9 + rnd() * 26;
-      cl.position.set(Math.cos(a) * r, y, Math.sin(a) * r);
-      cl.lookAt(0, y, 0);
-      cl.scale.setScalar(near ? 0.6 + rnd() * 0.5 : 1.6 + rnd() * 1.8);
-      this.bake(cl); // one mesh per cloud
-      this.scene.add(cl);
-      this.floaters.push({ o: cl, ph: 0, r, a, y, sp: 0.0015 + rnd() * 0.003 });
-    }
-    // light haze sprites to soften the horizon
-    const tex = glowTexture("rgba(255,240,248,0.9)", "rgba(255,240,248,0)");
-    for (let i = 0; i < (this.low ? 6 : 10); i++) {
-      const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthWrite: false, opacity: 0.3 }));
-      const a = Math.random() * Math.PI * 2, r = rand(160, 280);
-      s.position.set(Math.cos(a) * r, rand(-6, 8), Math.sin(a) * r);
-      const w = rand(50, 110);
-      s.scale.set(w, w * 0.3, 1);
-      this.scene.add(s);
-      this.floaters.push({ o: s, ph: 0, r, a, y: s.position.y, sp: rand(0.002, 0.004) });
-    }
+    // a sea of soft clouds in the style of mr.doob's WebGL clouds: thousands of textured cards,
+    // all in one mesh (one draw call), each turned to face the camera, faded by fog with distance
+    // and drifting slowly on the wind. Cards gather in clusters, so they read as cumulus.
+    this.scene.add(cloudSea(rnd, this.low, this.uniforms.uTime, this.scene.fog as THREE.FogExp2));
     // little pink hearts floating up between the islands
     const heartShape = new THREE.Shape();
     heartShape.moveTo(0, -0.5);

@@ -8,7 +8,7 @@
  */
 import * as THREE from "three";
 import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
-import { HAIR_COLOR, type FaceSpec } from "../faces";
+import { hairHex, type FaceSpec } from "../faces";
 import { presetFor } from "../characters";
 import { facePatch, sculptHead } from "./faceArt";
 import { irisFor } from "../faces";
@@ -194,9 +194,9 @@ export function buildCharacter(look: Look): Character {
   // buzz cuts are stored with skin-coloured "hair"; use the real hair colour as short stubble
   const hairC =
     spec?.hair === 5
-      ? new THREE.Color(HAIR_COLOR[spec.hairColor] ?? "#2b1d18").lerp(new THREE.Color(look.skin ?? "#d6a07a"), 0.25)
+      ? new THREE.Color(hairHex(spec.hairColor)).lerp(new THREE.Color(look.skin ?? "#d6a07a"), 0.25)
       : new THREE.Color(look.hair ?? "#2b1d18");
-  const browC = spec && (spec.hair === 7 || spec.hair === 8) ? new THREE.Color(HAIR_COLOR[spec.hairColor] ?? "#2b1d18") : hairC.clone().multiplyScalar(0.8);
+  const browC = spec && (spec.hair === 7 || spec.hair === 8) ? new THREE.Color(hairHex(spec.hairColor)) : hairC.clone().multiplyScalar(0.8);
   const P = presetFor(spec, look.seed);
   const col = (c: string | undefined, d: string) => new THREE.Color(c ?? d);
   const topC = col(P.topC, "#f3f0f6");

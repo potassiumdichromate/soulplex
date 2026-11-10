@@ -7,7 +7,7 @@
  * switches cells to blink and talk, so animation costs nothing but a texture offset.
  */
 import * as THREE from "three";
-import { HAIR_COLOR, type FaceSpec } from "../faces";
+import { hairHex, type FaceSpec } from "../faces";
 
 /** Angular size of the painted patch on the head (radians either side of the centre). */
 export const CAP_X = 1.05;
@@ -332,7 +332,7 @@ function paintCell(g: CanvasRenderingContext2D, ox: number, oy: number, blink: b
 
 /** The shared face atlas for this look. Characters clone it so they can blink independently. */
 export function faceAtlas(spec: FaceSpec, iris: string, skin: string, fem: boolean): THREE.CanvasTexture {
-  const hair = HAIR_COLOR[spec.hairColor] ?? "#2b1d18";
+  const hair = hairHex(spec.hairColor);
   const key = [spec.eyes, spec.brows, spec.mouth, spec.hairColor, iris, skin, fem].join("|");
   let tex = cache.get(key);
   if (!tex) {
