@@ -33,14 +33,20 @@ const cache = new Map<string, Promise<ModelEntry | null>>();
 const loader = new GLTFLoader();
 loader.setMeshoptDecoder(MeshoptDecoder);
 
+/** A page can carry its models inline (the single-file demo): { "midnight": "data:model/gltf-binary;base64,…" }. */
+const inlineModels = () => (globalThis as any).__soulplexModels as Record<string, any> | undefined;
+const urlOf = (file: string) => (/^(data:|blob:|https?:)/.test(file) ? file : MODEL_BASE + file);
+
 function getManifest() {
+  const inline = inlineModels();
+  if (inline) return (manifest ??= Promise.resolve(inline));
   manifest ??= fetch(MODEL_BASE + "models.json", { cache: "no-cache" })
     .then((r) => (r.ok ? r.json() : {}))
     .catch(() => ({}));
   return manifest;
 }
 
-const loadGlb = (file: string) => new Promise<{ scene: THREE.Object3D; animations: THREE.AnimationClip[] } | null>((resolve) => loader.load(MODEL_BASE + file, (g) => resolve(g), undefined, () => resolve(null)));
+const loadGlb = (file: string) => new Promise<{ scene: THREE.Object3D; animations: THREE.AnimationClip[] } | null>((resolve) => loader.load(urlOf(file), (g) => resolve(g), undefined, () => resolve(null)));
 
 /** Movements shared by all models (each clip renamed after its file: idle, walk, sit, talk). */
 function getSharedClips() {
@@ -61,9 +67,23 @@ function getSharedClips() {
 }
 
 /** The model for an outfit look, loaded once and shared (null when there is none). */
+/** "midnight.glb" for a file path or an inline model (inline ones are named by their manifest key). */
+const inlineNames = new Map<string, string>();
+const fileName = (file: string) => inlineNames.get(file) ?? file.replace(/^.*\//, "");
+
 export async function modelFor(lookId: string, fit?: "f" | "m"): Promise<ModelEntry | null> {
   const m = await getManifest();
-  const file = [lookId, fit && "*" + fit, "*"].map((k) => (k && typeof m[k] === "string" ? (m[k] as string) : undefined)).find(Boolean);
+  // "@midnight" points at another entry, so an inline model is only carried once
+  const val = (k: string | false | undefined) => {
+    let v = k && typeof m[k] === "string" ? (m[k] as string) : undefined;
+    if (v?.startsWith("@")) v = typeof m[v.slice(1)] === "string" ? m[v.slice(1)] : undefined;
+    return v;
+  };
+  const file = [lookId, fit && "*" + fit, "*"].map(val).find(Boolean);
+  if (file && file.startsWith("data:") && !inlineNames.has(file)) {
+    const key = Object.keys(m).find((k) => m[k] === file && !k.startsWith("*")) ?? "model";
+    inlineNames.set(file, key + ".glb");
+  }
   if (!file) return null;
   const shared = await getSharedClips();
   if (!cache.has(file))
@@ -71,13 +91,13 @@ export async function modelFor(lookId: string, fit?: "f" | "m"): Promise<ModelEn
       file,
       new Promise((resolve) =>
         loader.load(
-          MODEL_BASE + file,
+          urlOf(file),
           (g) => {
             g.scene.updateMatrixWorld(true);
             const box = new THREE.Box3().setFromObject(g.scene);
             // the model's own clips win; shared movements fill in the rest
             const clips = [...g.animations, ...shared.filter((c) => !g.animations.some((o) => o.name.toLowerCase().includes(c.name.toLowerCase())))];
-            resolve({ scene: g.scene, clips, height: Math.max(0.01, box.max.y - box.min.y), minY: box.min.y, file });
+            resolve({ scene: g.scene, clips, height: Math.max(0.01, box.max.y - box.min.y), minY: box.min.y, file: fileName(file) });
           },
           undefined,
           () => resolve(null),
