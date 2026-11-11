@@ -105,8 +105,28 @@ def intents_fit(a, b):
     return abs(INTENT_STEP.get(a, 1) - INTENT_STEP.get(b, 1)) <= 1
 
 
+def has_face(u):
+    """A face the person chose (photo, illustration or cast character), not the automatic placeholder."""
+    face = (u.face if u else None) or {}
+    return bool(face.get("kind")) and not face.get("auto")
+
+
+def date_ready(u):
+    """What a member needs before their agent can go on dates: a verified email and a chosen face."""
+    return bool(u and u.email_verified and has_face(u))
+
+
+def auto_discovery(u):
+    """Switch discovery on the first time a member becomes date-ready. Later they can turn it off in Settings."""
+    studio = dict(u.studio or {})
+    if date_ready(u) and not studio.get("discovery_auto"):
+        u.discovery = True
+        studio["discovery_auto"] = True
+        u.studio = studio
+
+
 def base_ok(db, a, b):
-    """Rules nobody can waive: active, verified, adult, opted in, same city, orientation both ways,
+    """Rules nobody can waive: active, email verified, has a face, adult, opted in, same city, orientation both ways,
     compatible intentions, not blocked."""
     return bool(
         a
@@ -116,10 +136,10 @@ def base_ok(db, a, b):
         and not b.disabled
         and a.discovery
         and b.discovery
-        and a.verified
-        and b.verified
         and a.email_verified
         and b.email_verified
+        and has_face(a)
+        and has_face(b)
         and a.age >= 18
         and b.age >= 18
         and cities_fit(a, b)

@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { ArrowRight, X, Sparkles, Coffee, HeartHandshake, Brain, ShieldCheck, Eye, Lock } from "lucide-react";
 import { api } from "../api";
 import { useStore } from "../store";
-import { Brand, Wisp } from "../ui";
+import { Brand, Wisp, PasswordInput } from "../ui";
 import { withWorld } from "../world/WorldCanvas";
 import { CityPicker } from "../CityPicker";
 import { headUrl, bodyColors, type FaceSpec } from "../faces";
@@ -327,8 +327,7 @@ export function Landing() {
             {(sheet !== "reset" || !!resetToken) && (
               <label>
                 Password
-                <input
-                  type="password"
+                <PasswordInput
                   required
                   minLength={sheet === "register" || resetToken ? 12 : 1}
                   autoComplete={sheet === "register" ? "new-password" : "current-password"}

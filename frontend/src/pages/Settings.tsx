@@ -130,7 +130,7 @@ export function Settings() {
           <i />
           <span>
             <b>Discovery</b>: let my agent meet other agents and be found
-            {!user!.verified && " (opens after operator verification)"}
+            {!user!.email_verified && " (opens once your email is verified)"}
           </span>
         </label>
         <button className="btn primary" disabled={busy}>
@@ -218,8 +218,7 @@ export function Settings() {
       <section className="glass card">
         <h3>Account</h3>
         <p className="fine">
-          {user!.email} · {user!.email_verified ? "email verified" : "email not verified"} ·{" "}
-          {user!.verified ? "eligibility verified" : "awaiting operator verification"}
+          {user!.email} · {user!.email_verified ? "email verified" : "email not verified"}
         </p>
         <div className="btn-row">
           {!user!.email_verified && (

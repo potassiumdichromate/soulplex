@@ -33,36 +33,64 @@ export function ExploreButton({ big = false }: { big?: boolean }) {
   );
 }
 
+type Step = { done: boolean; label: string; act: () => void; cta?: string };
+
+/** Required steps gate dates (the server checks the same: verified email, a chosen face, discovery on).
+ *  Optional steps only make the agent a better representative. */
 export function Readiness() {
-  const { user, memories, go, openSetup } = useStore();
+  const { user, memories, go, openSetup, perform } = useStore();
   const shareable = memories.filter((m) => m.status === "approved" && m.visibility === "shareable").length;
-  const steps = [
-    { done: (user?.about_complete ?? 0) >= 60, label: `Complete your profile (${user?.about_complete ?? 0}%)`, to: "setup" },
-    { done: !!(user?.face as any)?.kind, label: "Give your agent a face: a photo or an illustration", to: "agent", arg: "face" },
-    { done: shareable >= 3, label: `Teach your agent at least 3 shareable traits (${Math.min(shareable, 3)}/3)`, to: "agent" },
-    { done: !!user?.verified, label: "Eligibility verified by the operator", to: "settings" },
-    { done: !!user?.discovery, label: "Turn on discovery so agents can meet yours", to: "settings" },
-    { done: !!user?.contact, label: "Add a private contact for mutual introductions", to: "settings" },
+  const face = (user?.face ?? {}) as { kind?: string; auto?: boolean };
+  const required: Step[] = [
+    {
+      done: !!user?.email_verified,
+      label: "Verify your email",
+      cta: "Resend link",
+      act: () => perform(async () => void (await api("/auth/resend-verification", "POST")), "Verification link sent."),
+    },
+    {
+      done: !!face.kind && !face.auto, // the automatic placeholder doesn't count
+      label: "Give your agent a face: a photo or an illustration",
+      act: () => go("agent", "face"),
+    },
   ];
-  if (steps.every((s) => s.done)) return null;
+  // discovery switches on by itself once they're ready; only ask if they turned it off
+  if (user?.email_verified && face.kind && !face.auto && !user?.discovery)
+    required.push({ done: false, label: "Turn on discovery so agents can meet yours", act: () => go("settings") });
+  const optional: Step[] = [
+    { done: (user?.about_complete ?? 0) >= 60, label: `Complete your profile (${user?.about_complete ?? 0}%)`, act: () => openSetup(0) },
+    { done: shareable >= 3, label: `Teach your agent 3 shareable traits (${Math.min(shareable, 3)}/3)`, act: () => go("agent") },
+  ];
+  if ([...required, ...optional].every((s) => s.done)) return null;
+  const ready = required.every((s) => s.done);
+  const list = (steps: Step[]) => (
+    <ul>
+      {steps.map((s) => (
+        <li key={s.label} className={s.done ? "done" : ""}>
+          <span className="tick">{s.done && <Check size={12} />}</span>
+          <span>{s.label}</span>
+          {!s.done && (
+            <button className="link" onClick={s.act}>
+              {s.cta ?? "Do it"} <ChevronRight size={14} />
+            </button>
+          )}
+        </li>
+      ))}
+    </ul>
+  );
   return (
     <div className="glass card ready-card">
       <h3>
-        <Sparkles size={16} /> Get your agent ready
+        <Sparkles size={16} /> {ready ? "Your agent can go on dates" : "Get your agent ready"}
       </h3>
-      <ul>
-        {steps.map((s) => (
-          <li key={s.label} className={s.done ? "done" : ""}>
-            <span className="tick">{s.done && <Check size={12} />}</span>
-            <span>{s.label}</span>
-            {!s.done && (
-              <button className="link" onClick={() => (s.to === "setup" ? openSetup(0) : go(s.to, (s as any).arg))}>
-                Do it <ChevronRight size={14} />
-              </button>
-            )}
-          </li>
-        ))}
-      </ul>
+      <p className="ready-group">
+        <span className="ready-tag req">Required</span> {ready ? "All done." : "Needed before your agent can go on dates."}
+      </p>
+      {list(required)}
+      <p className="ready-group">
+        <span className="ready-tag opt">Optional</span> Helps your agent represent you better.
+      </p>
+      {list(optional)}
     </div>
   );
 }

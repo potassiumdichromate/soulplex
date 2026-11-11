@@ -1,5 +1,6 @@
 import logoMark from "./assets/logo-mark.png";
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode, type InputHTMLAttributes } from "react";
+import { Eye, EyeOff } from "lucide-react";
 import { DIM_LABEL, type FaceView } from "./api";
 import { faceUrl } from "./faces";
 import { useStore } from "./store";
@@ -204,4 +205,23 @@ export function timeAgo(ts: number) {
   if (s < 3600) return Math.floor(s / 60) + "m ago";
   if (s < 86400) return Math.floor(s / 3600) + "h ago";
   return Math.floor(s / 86400) + "d ago";
+}
+
+/** A password box with an eye button that shows or hides what was typed. */
+export function PasswordInput(props: Omit<InputHTMLAttributes<HTMLInputElement>, "type">) {
+  const [show, setShow] = useState(false);
+  return (
+    <span className="pw-field">
+      <input {...props} type={show ? "text" : "password"} />
+      <button
+        type="button"
+        className="pw-eye"
+        aria-label={show ? "Hide password" : "Show password"}
+        aria-pressed={show}
+        onClick={() => setShow((v) => !v)}
+      >
+        {show ? <EyeOff size={18} /> : <Eye size={18} />}
+      </button>
+    </span>
+  );
 }

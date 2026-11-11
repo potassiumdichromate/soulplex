@@ -699,6 +699,8 @@ def suspicious(user, report_count):
 
 
 def pilot_metrics(db):
+    from .domain import date_ready  # domain imports this module
+
     members = db.scalars(select(User).where(User.synthetic == False, User.role == "member")).all()
     started = [u for u in members if (u.studio or {}).get("step")]
     previewed = [u for u in started if (u.studio or {}).get("previewed")]
@@ -715,11 +717,11 @@ def pilot_metrics(db):
             mutual_ids.add(sid)
     thin = []
     for user in members:
-        if not user.discovery or not user.verified:
+        if not user.discovery or not date_ready(user):
             continue
         others = [
             other for other in members
-            if other.id != user.id and other.city == user.city and other.discovery and other.verified and user.gender in (other.seeking or []) and other.gender in (user.seeking or [])
+            if other.id != user.id and other.city == user.city and other.discovery and date_ready(other) and user.gender in (other.seeking or []) and other.gender in (user.seeking or [])
         ]
         if len(others) < 3:
             thin.append({"id": user.id, "name": user.name, "city": user.city, "eligible": len(others)})

@@ -377,6 +377,7 @@ def verify_email(body: AuthLink, request: Request, db: Session = Depends(get_db)
     auth_limit(request, db)
     u = consume_token(db, body.token, "verify")
     u.email_verified = True
+    auto_discovery(u)
     log(db, u, "email_verified")
     db.commit()
     return {"ok": True}
@@ -579,6 +580,7 @@ def set_face(body: FaceInput, request: Request, db: Session = Depends(get_db)):
     except ValueError as exc:
         raise HTTPException(422, str(exc))
     u.face = face
+    auto_discovery(u)
     log(db, u, "face_updated")
     db.commit()
     return own_profile(u)
@@ -798,7 +800,7 @@ def eligible_partners(db, u):
         .where(
             User.city == u.city,
             User.discovery == True,
-            User.verified == True,
+            User.email_verified == True,
             User.disabled == False,
             User.id != u.id,
         )
@@ -806,16 +808,17 @@ def eligible_partners(db, u):
         .limit(300)
     ):
         if eligible(db, u, p):
-            facts = memories(db, p.id, True)
-            if facts:
-                yield p, facts
+            # traits are optional: an agent without any keeps the date light and general
+            yield p, memories(db, p.id, True)
 
 
 def discovery_blocker(db, u):
-    if not u.discovery or not u.verified or not u.email_verified:
-        return "Complete your profile, operator verification and discovery opt-in."
-    if not memories(db, u.id, True):
-        return "Approve at least one shareable memory first."
+    if not u.email_verified:
+        return "Verify your email first."
+    if not has_face(u):
+        return "Give your agent a face: a photo or an illustration."
+    if not u.discovery:
+        return "Turn on discovery in Settings so agents can meet yours."
     return ""
 
 
@@ -879,10 +882,6 @@ def queue_scene(db, u, p, venue, waive=False):
     waived_by = u.id if waive and p and not prefs_ok(u, p) else None
     if not eligible(db, u, p, waived_by):
         raise HTTPException(409, "Both people must be eligible, verified and opted in.")
-    if not memories(db, u.id, True) or not memories(db, p.id, True):
-        raise HTTPException(
-            409, "Both representatives need approved shareable memories."
-        )
     key = scene_key(u.id, p.id, venue, u.memory_version, p.memory_version)
     existing = db.scalar(select(Scene).where(Scene.dedupe_key == key))
     if existing:
@@ -978,7 +977,7 @@ def search(
     matches, outside, hidden = [], [], 0
     for p in db.scalars(
         select(User)
-        .where(User.city == u.city, User.discovery == True, User.verified == True, User.disabled == False, User.id != u.id)
+        .where(User.city == u.city, User.discovery == True, User.email_verified == True, User.disabled == False, User.id != u.id)
         .order_by(User.created)
         .limit(500)
     ):
@@ -986,8 +985,6 @@ def search(
             hidden += 1  # their side (or a rule nobody can waive) says no: never shown
             continue
         facts = memories(db, p.id, True)
-        if not facts:
-            continue
         ab = p.about or {}
         text = " ".join([p.name, ab.get("job", ""), ab.get("hometown", "")] + [x["answer"] for x in ab.get("prompts", [])] + [m.content for m in facts]).lower()
         if q and q not in text:

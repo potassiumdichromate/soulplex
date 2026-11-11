@@ -5470,3 +5470,62 @@ textarea::placeholder {
 .studio-preview { display: grid; gap: 8px; width: 100%; }
 .studio-body label.studio-line { display: flex; flex-direction: row; align-items: flex-start; justify-content: flex-start; text-align: left; gap: 12px; font-size: 15px; color: var(--ink); }
 .studio-body label.studio-line input { width: 18px; height: 18px; flex: none; margin: 2px 0 0; accent-color: #e05a9c; }
+
+/* password box with a show/hide eye */
+.pw-field {
+  position: relative;
+  display: block;
+}
+.pw-field input {
+  width: 100%;
+  padding-right: 44px;
+}
+.pw-eye {
+  position: absolute;
+  top: 50%;
+  right: 6px;
+  transform: translateY(-50%);
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--ink-3);
+  cursor: pointer;
+}
+.pw-eye:hover,
+.pw-eye:focus-visible {
+  color: var(--ink);
+  background: rgba(0, 0, 0, 0.05);
+}
+
+/* readiness checklist: required vs optional groups */
+.ready-card .ready-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 14px 0 8px;
+  font-size: 12.5px;
+  color: var(--ink-3);
+}
+.ready-card .ready-group:first-of-type {
+  margin-top: 8px;
+}
+.ready-card .ready-tag {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  padding: 2px 8px;
+  border-radius: 999px;
+}
+.ready-card .ready-tag.req {
+  background: #fde3e7;
+  color: #b4233c;
+}
+.ready-card .ready-tag.opt {
+  background: #eceaf2;
+  color: #5d5873;
+}

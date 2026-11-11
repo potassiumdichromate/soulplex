@@ -105,7 +105,10 @@ def view(face, *, owner=False, revealed=False):
             "locked": not open_,
         }
     if face.get("kind") == "illustrated":
-        return {"kind": "illustrated", "spec": face.get("spec", {})}
+        out = {"kind": "illustrated", "spec": face.get("spec", {})}
+        if owner and face.get("auto"):
+            out["auto"] = True  # the owner's checklist shows the placeholder isn't a chosen face yet
+        return out
     if face.get("kind") == "cast":  # fictional members drawn as the Soulplex cast
         return {"kind": "cast", "id": face.get("id", "")}
     return {}
