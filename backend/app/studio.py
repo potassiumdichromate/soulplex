@@ -13,6 +13,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import func, or_, select
 
 from .ai import ProviderError, structured
+from .places import PLACES
 from .db import (
     CalibrationRun,
     ConsentRecord,
@@ -276,7 +277,7 @@ INTENT_PROFILE = {
     "open_to_serious": "relationship",
     "exploring": "dating",
 }
-UAE = {"Dubai"}
+UAE = set(PLACES["United Arab Emirates"])
 ORDER = ["CAL02", "CAL01", "CAL03"]
 
 

@@ -857,13 +857,29 @@ export class SoulWorld {
     }
     // full sharpness on Retina screens; adaptRes() lowers it again on a device that can't keep up
     this.prMax = Math.min(devicePixelRatio, this.low ? 1.5 : 2);
-    const pr = (this.pr = this.prMax);
+    let pr = (this.pr = this.prMax);
     this.renderer.setPixelRatio(pr);
     this.renderer.setSize(host.clientWidth, host.clientHeight);
     this.renderer.toneMapping = THREE.NeutralToneMapping; // keeps the pastels' colour (ACES greys them)
     this.renderer.toneMappingExposure = 0.95;
     this.renderer.shadowMap.enabled = !this.low;
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    this.renderer.shadowMap.autoUpdate = false; // frame() asks for a redraw every other frame
+    this.renderer.shadowMap.needsUpdate = true;
+    // software rendering (no usable GPU) can't drive the full scene: use lite mode there
+    const gl = this.renderer.getContext();
+    const dbg = gl.getExtension("WEBGL_debug_renderer_info");
+    const gpu = String(dbg ? gl.getParameter(dbg.UNMASKED_RENDERER_WEBGL) : "");
+    const forced = new URLSearchParams(location.search).get("quality");
+    if (!forced && /swiftshader|llvmpipe|software|basic render/i.test(gpu)) this.low = true;
+    // integrated Intel graphics struggle at Retina resolution; start a step lower and let adaptRes raise it
+    const weakGpu = !forced && /intel/i.test(gpu);
+    if (this.low) {
+      this.renderer.shadowMap.enabled = false;
+      this.prMax = Math.min(devicePixelRatio, 1.5);
+    }
+    pr = this.pr = weakGpu ? Math.min(this.prMax, 1.5) : this.prMax;
+    this.renderer.setPixelRatio(pr);
     host.appendChild(this.renderer.domElement);
 
     this.camera = new THREE.PerspectiveCamera(38, host.clientWidth / host.clientHeight, 0.1, 3000);
@@ -910,13 +926,14 @@ export class SoulWorld {
   /** Adaptive resolution: drop the pixel ratio when frames are slow, raise it back when there is headroom. */
   adaptRes(dt: number) {
     this.frameMs.push(dt * 1000);
-    if (this.frameMs.length < 90) return;
+    if (this.frameMs.length < 60) return;
     const sorted = this.frameMs.sort((a, b) => a - b);
     const typical = sorted[Math.floor(sorted.length * 0.6)];
     this.frameMs = [];
     let next = this.pr;
-    if (typical > 24 && this.pr > 1) next = Math.max(1, this.pr - 0.25);
-    else if (typical < 15 && this.pr < this.prMax) next = Math.min(this.prMax, this.pr + 0.25);
+    // aim for a smooth 60 fps: step down below ~52 fps (it used to wait until ~40), back up with clear headroom
+    if (typical > 19 && this.pr > 1) next = Math.max(1, this.pr - (typical > 30 ? 0.5 : 0.25));
+    else if (typical < 13 && this.pr < this.prMax) next = Math.min(this.prMax, this.pr + 0.25);
     if (next === this.pr || document.hidden) return;
     this.pr = next;
     this.renderer.setPixelRatio(next);
@@ -991,7 +1008,8 @@ export class SoulWorld {
     this.scene.add(moon, halo);
   }
   ocean() {
-    const seg = this.low ? 110 : 240;
+    // the swell is ~100 units long and the shading is per pixel, so a coarse grid looks the same (240 was 115k triangles)
+    const seg = this.low ? 64 : 120;
     const g = new THREE.PlaneGeometry(2400, 2400, seg, seg);
     g.rotateX(-Math.PI / 2);
     const m = new THREE.ShaderMaterial({
@@ -4034,6 +4052,9 @@ export class SoulWorld {
   }
   /** True while the scene is only a backdrop (e.g. the home page scrolled past the hero): draw every other frame. */
   throttle = false;
+  followLiftGoal = 0;
+  followRayTick = 0;
+  shadowTick = 0;
   skip = false;
   loop = () => {
     if (!this.running || this.disposed || this.manual) return;
@@ -4127,8 +4148,10 @@ export class SoulWorld {
       this.camGoal.pos.copy(look).addScaledVector(ahead, back).add(new THREE.Vector3(0, small ? 7 : 3.4, 0)).addScaledVector(right, 0.8);
       // keep a clear view: if a stall, tree or rock sits between the couple and the camera, rise above it (eased, no jumps)
       const eye = mid.clone().add(new THREE.Vector3(0, 1.1, 0));
-      let lift = 0;
-      for (; lift < 5.6; lift += 1.4) {
+      // ray tests against the island are costly; a few checks a second is plenty, the lift below is eased anyway
+      let lift = this.followLiftGoal;
+      if (fresh || ++this.followRayTick % 6 === 0)
+      for (lift = 0; lift < 5.6; lift += 1.4) {
         const cp = this.camGoal.pos.clone().add(new THREE.Vector3(0, lift, 0)).addScaledVector(ahead, -0.4 * lift);
         const to = cp.sub(eye);
         const len = to.length();
@@ -4138,6 +4161,7 @@ export class SoulWorld {
         const hit = this.ray.intersectObject(isle.group, true).some((h) => (h.object as THREE.Mesh).isMesh && h.object.visible && h.object !== isle.ring);
         if (!hit) break;
       }
+      this.followLiftGoal = lift;
       if (fresh) this.followLift = lift;
       this.followLift += (lift - this.followLift) * (1 - Math.exp(-dt * (lift > this.followLift ? 3 : 0.8)));
       this.camGoal.pos.y += this.followLift;
@@ -4242,8 +4266,10 @@ export class SoulWorld {
       this.camera.position.x += Math.sin(t * 0.25) * 0.002 * m;
     }
     this.controls.update();
+    // redraw the shadow map every other frame: it re-renders ~150 objects, and a 30 fps shadow is invisible
+    this.renderer.shadowMap.needsUpdate = (this.shadowTick++ & 1) === 0;
     this.composer.render();
-    if (!this.manual) this.adaptRes(dt);
+    if (!this.manual && !this.throttle) this.adaptRes(dt); // throttled frames are slow on purpose
   }
 
   dispose() {

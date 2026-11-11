@@ -52,6 +52,7 @@ export type User = {
   discovery: boolean;
   verified: boolean;
   email_verified: boolean;
+  age_verified?: boolean;
   synthetic: boolean;
   role: string;
   memory_version: number;

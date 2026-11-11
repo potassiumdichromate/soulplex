@@ -4,6 +4,7 @@ import { api } from "../api";
 import { useStore } from "../store";
 import { Brand, Wisp } from "../ui";
 import { withWorld } from "../world/WorldCanvas";
+import { CityPicker } from "../CityPicker";
 import { headUrl, bodyColors, type FaceSpec } from "../faces";
 import howArt from "../assets/landing/how.webp";
 
@@ -19,10 +20,8 @@ const lface = (n: string) => ({ kind: "illustrated" as const, spec: L[n][1] });
 
 const blank = {
   name: "",
-  age: 28,
-  city: "Dubai",
+  city: "",
   gender: "woman",
-  seeking: ["man"],
   age_min: 25,
   age_max: 38,
   intent: "relationship",
@@ -298,46 +297,19 @@ export function Landing() {
                   First name or nickname
                   <input required maxLength={40} value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} />
                 </label>
+                {/* age and who they'd like to meet are asked in onboarding, right after sign-up */}
                 <div className="row2">
-                  <label>
-                    Age
-                    <input
-                      type="number"
-                      min={18}
-                      max={100}
-                      required
-                      value={f.age}
-                      onChange={(e) => setF({ ...f, age: +e.target.value })}
-                    />
-                  </label>
-                  <label>
-                    City
-                    <select value={f.city} onChange={(e) => setF({ ...f, city: e.target.value })}>
-                      <option>Dubai</option>
-                      <option>Delhi NCR</option>
-                    </select>
-                  </label>
+                  <CityPicker city={f.city} onChange={(city) => setF({ ...f, city })} />
                 </div>
-                <div className="row2">
-                  <label>
-                    I am
-                    <select value={f.gender} onChange={(e) => setF({ ...f, gender: e.target.value })}>
-                      <option value="woman">Woman</option>
-                      <option value="man">Man</option>
-                      <option value="nonbinary">Non-binary</option>
-                      <option value="self-described">I describe my gender another way</option>
-                    </select>
-                  </label>
-                  <label>
-                    Interested in
-                    <select value={f.seeking[0]} onChange={(e) => setF({ ...f, seeking: [e.target.value] })}>
-                      <option value="man">Men</option>
-                      <option value="woman">Women</option>
-                      <option value="nonbinary">Non-binary people</option>
-                      <option value="self-described">People who self-describe their gender</option>
-                    </select>
-                  </label>
-                </div>
+                <label>
+                  I am
+                  <select value={f.gender} onChange={(e) => setF({ ...f, gender: e.target.value })}>
+                    <option value="woman">Woman</option>
+                    <option value="man">Man</option>
+                    <option value="nonbinary">Non-binary</option>
+                    <option value="self-described">I describe my gender another way</option>
+                  </select>
+                </label>
               </>
             )}
             {(sheet !== "reset" || !resetToken) && (

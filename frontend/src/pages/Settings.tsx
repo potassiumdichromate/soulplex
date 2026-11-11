@@ -4,6 +4,7 @@ import { api, STATIC } from "../api";
 import { useStore } from "../store";
 import { Panel, Head } from "./Shell";
 import { ProfileEditor } from "./ProfileEditor";
+import { CityPicker } from "../CityPicker";
 
 const GENDERS = [
   ["woman", "Women"],
@@ -64,13 +65,9 @@ export function Settings() {
           </label>
         </div>
         <div className="row2">
-          <label>
-            City
-            <select value={p.city} onChange={(e) => set("city", e.target.value)}>
-              <option>Dubai</option>
-              <option>Delhi NCR</option>
-            </select>
-          </label>
+          <CityPicker city={p.city} onChange={(c) => set("city", c)} />
+        </div>
+        <div className="row2">
           <label>
             I am
             <select value={p.gender} onChange={(e) => set("gender", e.target.value)}>

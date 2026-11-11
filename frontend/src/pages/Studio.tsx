@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { ArrowLeft, ArrowRight, Check, X, Sparkles, ShieldCheck, MessageCircle } from "lucide-react";
 import { api } from "../api";
+import { CityPicker } from "../CityPicker";
 import { useStore } from "../store";
 import { Wisp } from "../ui";
 
@@ -78,7 +79,9 @@ export function Studio({ onClose }: { start?: number; onClose: () => void }) {
   const [note, setNote] = useState("");
   const [ageMin, setAgeMin] = useState(user?.age_min ?? 25);
   const [ageMax, setAgeMax] = useState(user?.age_max ?? 40);
-  const [city, setCity] = useState(user?.city || "Dubai");
+  const [city, setCity] = useState(user?.city || "");
+  // sign-up stores a placeholder age; start empty unless they've already confirmed it here
+  const [myAge, setMyAge] = useState(user?.age_verified && user?.age ? String(user.age) : "");
   const [preview, setPreview] = useState<string[]>([]);
   const [keep, setKeep] = useState<Record<string, boolean>>({});
   const [grants, setGrants] = useState<Record<string, boolean>>({});
@@ -225,8 +228,13 @@ export function Studio({ onClose }: { start?: number; onClose: () => void }) {
             <div className="studio-note">
               <ShieldCheck size={18} />
               <p>I only share what you allow, one thing at a time. Skipped questions just stay unknown.</p>
-              <button className="btn primary" disabled={busy} onClick={() => perform(async () => { await api("/onboarding/age", "POST", { adult: true }); next(); })}>
-                I'm 18 or older <ArrowRight size={16} />
+              <label className="studio-age">
+                How old are you?
+                <input type="number" min={18} max={100} inputMode="numeric" placeholder="Your age" value={myAge} onChange={(e) => setMyAge(e.target.value)} />
+              </label>
+              {myAge !== "" && +myAge < 18 && <p className="hint">Soulplex is for adults (18 and over).</p>}
+              <button className="btn primary" disabled={busy || !(+myAge >= 18 && +myAge <= 100)} onClick={() => perform(async () => { await api("/onboarding/age", "POST", { adult: true, age: Math.round(+myAge) }); next(); })}>
+                Continue <ArrowRight size={16} />
               </button>
             </div>
           )}
@@ -254,13 +262,8 @@ export function Studio({ onClose }: { start?: number; onClose: () => void }) {
             <div className="studio-ages">
               <label>From {ageMin}<input type="range" min={18} max={100} value={ageMin} onChange={(e) => setAgeMin(Math.min(+e.target.value, ageMax))} /></label>
               <label>To {ageMax}<input type="range" min={18} max={100} value={ageMax} onChange={(e) => setAgeMax(Math.max(+e.target.value, ageMin))} /></label>
-              <label>City
-                <select value={city} onChange={(e) => setCity(e.target.value)}>
-                  <option>Dubai</option>
-                  <option>Delhi NCR</option>
-                </select>
-              </label>
-              <button className="btn primary" disabled={busy} onClick={() => perform(async () => {
+              <CityPicker city={city} onChange={setCity} />
+              <button className="btn primary" disabled={busy || !city} onClick={() => perform(async () => {
                 await api("/onboarding/range", "PUT", { age_min: ageMin, age_max: ageMax, city });
                 await load();
                 next();

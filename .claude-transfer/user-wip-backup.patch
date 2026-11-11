@@ -1,0 +1,388 @@
+diff --git a/backend/app/main.py b/backend/app/main.py
+index 59e3c86..436b3b3 100644
+--- a/backend/app/main.py
++++ b/backend/app/main.py
+@@ -24,6 +24,7 @@ from .minds import (
+ from . import minds as minds_client
+ from .mind_sync import enqueue as enqueue_mind, pair_payload, retire as retire_mind
+ from .studio import external_allowed
++from .places import valid_city
+ from .auth_flow import mail_ready, issue_token, consume_token, send_auth_email
+ from .usage import KEEP_DAYS, area as usage_area, route as usage_route, summary as usage_summary
+ from .usage import flush as flush_usage, flush_forever as flush_usage_forever
+@@ -138,7 +139,7 @@ class Strict(BaseModel):
+ class Profile(Strict):
+     name: str = Field(min_length=1, max_length=40)
+     age: int = Field(ge=18, le=100)
+-    city: Literal["Dubai", "Delhi NCR"]
++    city: str = Field(max_length=60)  # checked against places.CITIES in validate_profile
+     gender: Literal["woman", "man", "nonbinary", "self-described"]
+     seeking: list[Literal["woman", "man", "nonbinary", "self-described"]] = Field(
+         min_length=1, max_length=4
+@@ -151,6 +152,12 @@ class Profile(Strict):
+ 
+ 
+ class Register(Profile):
++    # age and who they'd like to meet are asked in onboarding straight after sign-up;
++    # these placeholders hold until then (discovery stays off until onboarding finishes)
++    age: int = Field(default=18, ge=18, le=100)
++    seeking: list[Literal["woman", "man", "nonbinary", "self-described"]] = Field(
++        default_factory=lambda: ["woman", "man", "nonbinary", "self-described"], min_length=1, max_length=4
++    )
+     email: str = Field(max_length=254)
+     password: str = Field(min_length=12, max_length=128)
+     consent: bool
+@@ -258,6 +265,8 @@ def me(request, db, mutate=False):
+ 
+ 
+ def validate_profile(p):
++    if not valid_city(p.city):
++        raise HTTPException(422, "Choose your country and a city from the list.")
+     if p.age_min > p.age_max:
+         raise HTTPException(422, "Minimum age must not exceed maximum age.")
+     if contains_contact(p.name):
+diff --git a/backend/app/studio.py b/backend/app/studio.py
+index b65000a..f3e15a3 100644
+--- a/backend/app/studio.py
++++ b/backend/app/studio.py
+@@ -13,6 +13,7 @@ from pydantic import BaseModel, Field
+ from sqlalchemy import func, or_, select
+ 
+ from .ai import ProviderError, structured
++from .places import PLACES
+ from .db import (
+     CalibrationRun,
+     ConsentRecord,
+@@ -276,7 +277,7 @@ INTENT_PROFILE = {
+     "open_to_serious": "relationship",
+     "exploring": "dating",
+ }
+-UAE = {"Dubai"}
++UAE = set(PLACES["United Arab Emirates"])
+ ORDER = ["CAL02", "CAL01", "CAL03"]
+ 
+ 
+diff --git a/backend/app/studio_api.py b/backend/app/studio_api.py
+index 547c10a..32da4e8 100644
+--- a/backend/app/studio_api.py
++++ b/backend/app/studio_api.py
+@@ -19,6 +19,7 @@ from .db import (
+     uid,
+ )
+ from .security import log
++from .places import valid_city
+ from .studio import (
+     NOTICE_VERSION,
+     CONSENTS,
+@@ -62,6 +63,7 @@ class StateIn(BaseModel):
+ 
+ class AgeIn(BaseModel):
+     adult: bool
++    age: int | None = Field(default=None, ge=18, le=100)  # their own age; sign-up no longer asks for it
+ 
+ 
+ class RangeIn(BaseModel):
+@@ -178,6 +180,8 @@ def save_state(body: StateIn, request: Request, db: Session = Depends(get_db)):
+ @router.post("/onboarding/age")
+ def confirm_age(body: AgeIn, request: Request, db: Session = Depends(get_db)):
+     user = _me(request, db, True)
++    if body.age is not None:
++        user.age = body.age
+     if not body.adult or user.age < 18:
+         raise HTTPException(422, "Soulplex is for adults. This check is separate from the ages you hope to meet.")
+     user.age_verified = True
+@@ -194,8 +198,8 @@ def save_range(body: RangeIn, request: Request, db: Session = Depends(get_db)):
+     user = _me(request, db, True)
+     if body.age_min > body.age_max:
+         raise HTTPException(422, "The youngest age in your range has to come first.")
+-    if body.city not in ("Dubai", "Delhi NCR"):
+-        raise HTTPException(422, "Choose Dubai or Delhi NCR.")
++    if not valid_city(body.city):
++        raise HTTPException(422, "Choose your country and a city from the list.")
+     user.age_min = body.age_min
+     user.age_max = body.age_max
+     user.city = body.city
+diff --git a/frontend/src/api.ts b/frontend/src/api.ts
+index e28d3fd..dd0c9cc 100644
+--- a/frontend/src/api.ts
++++ b/frontend/src/api.ts
+@@ -52,6 +52,7 @@ export type User = {
+   discovery: boolean;
+   verified: boolean;
+   email_verified: boolean;
++  age_verified?: boolean;
+   synthetic: boolean;
+   role: string;
+   memory_version: number;
+diff --git a/frontend/src/pages/Landing.tsx b/frontend/src/pages/Landing.tsx
+index abad8ca..22cfe19 100644
+--- a/frontend/src/pages/Landing.tsx
++++ b/frontend/src/pages/Landing.tsx
+@@ -4,6 +4,7 @@ import { api } from "../api";
+ import { useStore } from "../store";
+ import { Brand, Wisp } from "../ui";
+ import { withWorld } from "../world/WorldCanvas";
++import { CityPicker } from "../CityPicker";
+ import { headUrl, bodyColors, type FaceSpec } from "../faces";
+ import howArt from "../assets/landing/how.webp";
+ 
+@@ -19,10 +20,8 @@ const lface = (n: string) => ({ kind: "illustrated" as const, spec: L[n][1] });
+ 
+ const blank = {
+   name: "",
+-  age: 28,
+-  city: "Dubai",
++  city: "",
+   gender: "woman",
+-  seeking: ["man"],
+   age_min: 25,
+   age_max: 38,
+   intent: "relationship",
+@@ -298,46 +297,19 @@ export function Landing() {
+                   First name or nickname
+                   <input required maxLength={40} value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} />
+                 </label>
++                {/* age and who they'd like to meet are asked in onboarding, right after sign-up */}
+                 <div className="row2">
+-                  <label>
+-                    Age
+-                    <input
+-                      type="number"
+-                      min={18}
+-                      max={100}
+-                      required
+-                      value={f.age}
+-                      onChange={(e) => setF({ ...f, age: +e.target.value })}
+-                    />
+-                  </label>
+-                  <label>
+-                    City
+-                    <select value={f.city} onChange={(e) => setF({ ...f, city: e.target.value })}>
+-                      <option>Dubai</option>
+-                      <option>Delhi NCR</option>
+-                    </select>
+-                  </label>
+-                </div>
+-                <div className="row2">
+-                  <label>
+-                    I am
+-                    <select value={f.gender} onChange={(e) => setF({ ...f, gender: e.target.value })}>
+-                      <option value="woman">Woman</option>
+-                      <option value="man">Man</option>
+-                      <option value="nonbinary">Non-binary</option>
+-                      <option value="self-described">I describe my gender another way</option>
+-                    </select>
+-                  </label>
+-                  <label>
+-                    Interested in
+-                    <select value={f.seeking[0]} onChange={(e) => setF({ ...f, seeking: [e.target.value] })}>
+-                      <option value="man">Men</option>
+-                      <option value="woman">Women</option>
+-                      <option value="nonbinary">Non-binary people</option>
+-                      <option value="self-described">People who self-describe their gender</option>
+-                    </select>
+-                  </label>
++                  <CityPicker city={f.city} onChange={(city) => setF({ ...f, city })} />
+                 </div>
++                <label>
++                  I am
++                  <select value={f.gender} onChange={(e) => setF({ ...f, gender: e.target.value })}>
++                    <option value="woman">Woman</option>
++                    <option value="man">Man</option>
++                    <option value="nonbinary">Non-binary</option>
++                    <option value="self-described">I describe my gender another way</option>
++                  </select>
++                </label>
+               </>
+             )}
+             {(sheet !== "reset" || !resetToken) && (
+diff --git a/frontend/src/pages/Settings.tsx b/frontend/src/pages/Settings.tsx
+index bfa23bc..8bb736f 100644
+--- a/frontend/src/pages/Settings.tsx
++++ b/frontend/src/pages/Settings.tsx
+@@ -4,6 +4,7 @@ import { api, STATIC } from "../api";
+ import { useStore } from "../store";
+ import { Panel, Head } from "./Shell";
+ import { ProfileEditor } from "./ProfileEditor";
++import { CityPicker } from "../CityPicker";
+ 
+ const GENDERS = [
+   ["woman", "Women"],
+@@ -64,13 +65,9 @@ export function Settings() {
+           </label>
+         </div>
+         <div className="row2">
+-          <label>
+-            City
+-            <select value={p.city} onChange={(e) => set("city", e.target.value)}>
+-              <option>Dubai</option>
+-              <option>Delhi NCR</option>
+-            </select>
+-          </label>
++          <CityPicker city={p.city} onChange={(c) => set("city", c)} />
++        </div>
++        <div className="row2">
+           <label>
+             I am
+             <select value={p.gender} onChange={(e) => set("gender", e.target.value)}>
+diff --git a/frontend/src/pages/Studio.tsx b/frontend/src/pages/Studio.tsx
+index 415c1fb..a589111 100644
+--- a/frontend/src/pages/Studio.tsx
++++ b/frontend/src/pages/Studio.tsx
+@@ -1,6 +1,7 @@
+ import { useEffect, useState } from "react";
+ import { ArrowLeft, ArrowRight, Check, X, Sparkles, ShieldCheck, MessageCircle } from "lucide-react";
+ import { api } from "../api";
++import { CityPicker } from "../CityPicker";
+ import { useStore } from "../store";
+ import { Wisp } from "../ui";
+ 
+@@ -78,7 +79,9 @@ export function Studio({ onClose }: { start?: number; onClose: () => void }) {
+   const [note, setNote] = useState("");
+   const [ageMin, setAgeMin] = useState(user?.age_min ?? 25);
+   const [ageMax, setAgeMax] = useState(user?.age_max ?? 40);
+-  const [city, setCity] = useState(user?.city || "Dubai");
++  const [city, setCity] = useState(user?.city || "");
++  // sign-up stores a placeholder age; start empty unless they've already confirmed it here
++  const [myAge, setMyAge] = useState(user?.age_verified && user?.age ? String(user.age) : "");
+   const [preview, setPreview] = useState<string[]>([]);
+   const [keep, setKeep] = useState<Record<string, boolean>>({});
+   const [grants, setGrants] = useState<Record<string, boolean>>({});
+@@ -225,8 +228,13 @@ export function Studio({ onClose }: { start?: number; onClose: () => void }) {
+             <div className="studio-note">
+               <ShieldCheck size={18} />
+               <p>I only share what you allow, one thing at a time. Skipped questions just stay unknown.</p>
+-              <button className="btn primary" disabled={busy} onClick={() => perform(async () => { await api("/onboarding/age", "POST", { adult: true }); next(); })}>
+-                I'm 18 or older <ArrowRight size={16} />
++              <label className="studio-age">
++                How old are you?
++                <input type="number" min={18} max={100} inputMode="numeric" placeholder="Your age" value={myAge} onChange={(e) => setMyAge(e.target.value)} />
++              </label>
++              {myAge !== "" && +myAge < 18 && <p className="hint">Soulplex is for adults (18 and over).</p>}
++              <button className="btn primary" disabled={busy || !(+myAge >= 18 && +myAge <= 100)} onClick={() => perform(async () => { await api("/onboarding/age", "POST", { adult: true, age: Math.round(+myAge) }); next(); })}>
++                Continue <ArrowRight size={16} />
+               </button>
+             </div>
+           )}
+@@ -254,13 +262,8 @@ export function Studio({ onClose }: { start?: number; onClose: () => void }) {
+             <div className="studio-ages">
+               <label>From {ageMin}<input type="range" min={18} max={100} value={ageMin} onChange={(e) => setAgeMin(Math.min(+e.target.value, ageMax))} /></label>
+               <label>To {ageMax}<input type="range" min={18} max={100} value={ageMax} onChange={(e) => setAgeMax(Math.max(+e.target.value, ageMin))} /></label>
+-              <label>City
+-                <select value={city} onChange={(e) => setCity(e.target.value)}>
+-                  <option>Dubai</option>
+-                  <option>Delhi NCR</option>
+-                </select>
+-              </label>
+-              <button className="btn primary" disabled={busy} onClick={() => perform(async () => {
++              <CityPicker city={city} onChange={setCity} />
++              <button className="btn primary" disabled={busy || !city} onClick={() => perform(async () => {
+                 await api("/onboarding/range", "PUT", { age_min: ageMin, age_max: ageMax, city });
+                 await load();
+                 next();
+diff --git a/frontend/src/world/engine.ts b/frontend/src/world/engine.ts
+index aab808b..187df31 100644
+--- a/frontend/src/world/engine.ts
++++ b/frontend/src/world/engine.ts
+@@ -823,13 +823,29 @@ export class SoulWorld {
+     this.renderer.debug.checkShaderErrors = !!import.meta.env?.DEV;
+     // full sharpness on Retina screens; adaptRes() lowers it again on a device that can't keep up
+     this.prMax = Math.min(devicePixelRatio, this.low ? 1.5 : 2);
+-    const pr = (this.pr = this.prMax);
++    let pr = (this.pr = this.prMax);
+     this.renderer.setPixelRatio(pr);
+     this.renderer.setSize(host.clientWidth, host.clientHeight);
+     this.renderer.toneMapping = THREE.NeutralToneMapping; // keeps the pastels' colour (ACES greys them)
+     this.renderer.toneMappingExposure = 0.95;
+     this.renderer.shadowMap.enabled = !this.low;
+     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
++    this.renderer.shadowMap.autoUpdate = false; // frame() asks for a redraw every other frame
++    this.renderer.shadowMap.needsUpdate = true;
++    // software rendering (no usable GPU) can't drive the full scene: use lite mode there
++    const gl = this.renderer.getContext();
++    const dbg = gl.getExtension("WEBGL_debug_renderer_info");
++    const gpu = String(dbg ? gl.getParameter(dbg.UNMASKED_RENDERER_WEBGL) : "");
++    const forced = new URLSearchParams(location.search).get("quality");
++    if (!forced && /swiftshader|llvmpipe|software|basic render/i.test(gpu)) this.low = true;
++    // integrated Intel graphics struggle at Retina resolution; start a step lower and let adaptRes raise it
++    const weakGpu = !forced && /intel/i.test(gpu);
++    if (this.low) {
++      this.renderer.shadowMap.enabled = false;
++      this.prMax = Math.min(devicePixelRatio, 1.5);
++    }
++    pr = this.pr = weakGpu ? Math.min(this.prMax, 1.5) : this.prMax;
++    this.renderer.setPixelRatio(pr);
+     host.appendChild(this.renderer.domElement);
+ 
+     this.camera = new THREE.PerspectiveCamera(38, host.clientWidth / host.clientHeight, 0.1, 3000);
+@@ -876,13 +892,14 @@ export class SoulWorld {
+   /** Adaptive resolution: drop the pixel ratio when frames are slow, raise it back when there is headroom. */
+   adaptRes(dt: number) {
+     this.frameMs.push(dt * 1000);
+-    if (this.frameMs.length < 90) return;
++    if (this.frameMs.length < 60) return;
+     const sorted = this.frameMs.sort((a, b) => a - b);
+     const typical = sorted[Math.floor(sorted.length * 0.6)];
+     this.frameMs = [];
+     let next = this.pr;
+-    if (typical > 24 && this.pr > 1) next = Math.max(1, this.pr - 0.25);
+-    else if (typical < 15 && this.pr < this.prMax) next = Math.min(this.prMax, this.pr + 0.25);
++    // aim for a smooth 60 fps: step down below ~52 fps (it used to wait until ~40), back up with clear headroom
++    if (typical > 19 && this.pr > 1) next = Math.max(1, this.pr - (typical > 30 ? 0.5 : 0.25));
++    else if (typical < 13 && this.pr < this.prMax) next = Math.min(this.prMax, this.pr + 0.25);
+     if (next === this.pr || document.hidden) return;
+     this.pr = next;
+     this.renderer.setPixelRatio(next);
+@@ -955,7 +972,8 @@ export class SoulWorld {
+     this.scene.add(moon, halo);
+   }
+   ocean() {
+-    const seg = this.low ? 110 : 240;
++    // the swell is ~100 units long and the shading is per pixel, so a coarse grid looks the same (240 was 115k triangles)
++    const seg = this.low ? 64 : 120;
+     const g = new THREE.PlaneGeometry(2400, 2400, seg, seg);
+     g.rotateX(-Math.PI / 2);
+     const m = new THREE.ShaderMaterial({
+@@ -3876,6 +3894,9 @@ export class SoulWorld {
+   }
+   /** True while the scene is only a backdrop (e.g. the home page scrolled past the hero): draw every other frame. */
+   throttle = false;
++  followLiftGoal = 0;
++  followRayTick = 0;
++  shadowTick = 0;
+   skip = false;
+   loop = () => {
+     if (!this.running || this.disposed || this.manual) return;
+@@ -3969,8 +3990,10 @@ export class SoulWorld {
+       this.camGoal.pos.copy(look).addScaledVector(ahead, back).add(new THREE.Vector3(0, small ? 7 : 3.4, 0)).addScaledVector(right, 0.8);
+       // keep a clear view: if a stall, tree or rock sits between the couple and the camera, rise above it (eased, no jumps)
+       const eye = mid.clone().add(new THREE.Vector3(0, 1.1, 0));
+-      let lift = 0;
+-      for (; lift < 5.6; lift += 1.4) {
++      // ray tests against the island are costly; a few checks a second is plenty, the lift below is eased anyway
++      let lift = this.followLiftGoal;
++      if (fresh || ++this.followRayTick % 6 === 0)
++      for (lift = 0; lift < 5.6; lift += 1.4) {
+         const cp = this.camGoal.pos.clone().add(new THREE.Vector3(0, lift, 0)).addScaledVector(ahead, -0.4 * lift);
+         const to = cp.sub(eye);
+         const len = to.length();
+@@ -3980,6 +4003,7 @@ export class SoulWorld {
+         const hit = this.ray.intersectObject(isle.group, true).some((h) => (h.object as THREE.Mesh).isMesh && h.object.visible && h.object !== isle.ring);
+         if (!hit) break;
+       }
++      this.followLiftGoal = lift;
+       if (fresh) this.followLift = lift;
+       this.followLift += (lift - this.followLift) * (1 - Math.exp(-dt * (lift > this.followLift ? 3 : 0.8)));
+       this.camGoal.pos.y += this.followLift;
+@@ -4084,8 +4108,10 @@ export class SoulWorld {
+       this.camera.position.x += Math.sin(t * 0.25) * 0.002 * m;
+     }
+     this.controls.update();
++    // redraw the shadow map every other frame: it re-renders ~150 objects, and a 30 fps shadow is invisible
++    this.renderer.shadowMap.needsUpdate = (this.shadowTick++ & 1) === 0;
+     this.composer.render();
+-    if (!this.manual) this.adaptRes(dt);
++    if (!this.manual && !this.throttle) this.adaptRes(dt); // throttled frames are slow on purpose
+   }
+ 
+   dispose() {

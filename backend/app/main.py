@@ -24,6 +24,7 @@ from .minds import (
 from . import minds as minds_client
 from .mind_sync import enqueue as enqueue_mind, pair_payload, retire as retire_mind
 from .studio import external_allowed
+from .places import valid_city
 from .auth_flow import mail_ready, issue_token, consume_token, send_auth_email
 from .usage import KEEP_DAYS, area as usage_area, route as usage_route, summary as usage_summary
 from .usage import flush as flush_usage, flush_forever as flush_usage_forever
@@ -138,7 +139,7 @@ class Strict(BaseModel):
 class Profile(Strict):
     name: str = Field(min_length=1, max_length=40)
     age: int = Field(ge=18, le=100)
-    city: Literal["Dubai", "Delhi NCR"]
+    city: str = Field(max_length=60)  # checked against places.CITIES in validate_profile
     gender: Literal["woman", "man", "nonbinary", "self-described"]
     seeking: list[Literal["woman", "man", "nonbinary", "self-described"]] = Field(
         min_length=1, max_length=4
@@ -151,6 +152,12 @@ class Profile(Strict):
 
 
 class Register(Profile):
+    # age and who they'd like to meet are asked in onboarding straight after sign-up;
+    # these placeholders hold until then (discovery stays off until onboarding finishes)
+    age: int = Field(default=18, ge=18, le=100)
+    seeking: list[Literal["woman", "man", "nonbinary", "self-described"]] = Field(
+        default_factory=lambda: ["woman", "man", "nonbinary", "self-described"], min_length=1, max_length=4
+    )
     email: str = Field(max_length=254)
     password: str = Field(min_length=12, max_length=128)
     consent: bool
@@ -258,6 +265,8 @@ def me(request, db, mutate=False):
 
 
 def validate_profile(p):
+    if not valid_city(p.city):
+        raise HTTPException(422, "Choose your country and a city from the list.")
     if p.age_min > p.age_max:
         raise HTTPException(422, "Minimum age must not exceed maximum age.")
     if contains_contact(p.name):

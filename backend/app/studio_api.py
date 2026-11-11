@@ -19,6 +19,7 @@ from .db import (
     uid,
 )
 from .security import log
+from .places import valid_city
 from .studio import (
     NOTICE_VERSION,
     CONSENTS,
@@ -62,6 +63,7 @@ class StateIn(BaseModel):
 
 class AgeIn(BaseModel):
     adult: bool
+    age: int | None = Field(default=None, ge=18, le=100)  # their own age; sign-up no longer asks for it
 
 
 class RangeIn(BaseModel):
@@ -178,6 +180,8 @@ def save_state(body: StateIn, request: Request, db: Session = Depends(get_db)):
 @router.post("/onboarding/age")
 def confirm_age(body: AgeIn, request: Request, db: Session = Depends(get_db)):
     user = _me(request, db, True)
+    if body.age is not None:
+        user.age = body.age
     if not body.adult or user.age < 18:
         raise HTTPException(422, "Soulplex is for adults. This check is separate from the ages you hope to meet.")
     user.age_verified = True
@@ -194,8 +198,8 @@ def save_range(body: RangeIn, request: Request, db: Session = Depends(get_db)):
     user = _me(request, db, True)
     if body.age_min > body.age_max:
         raise HTTPException(422, "The youngest age in your range has to come first.")
-    if body.city not in ("Dubai", "Delhi NCR"):
-        raise HTTPException(422, "Choose Dubai or Delhi NCR.")
+    if not valid_city(body.city):
+        raise HTTPException(422, "Choose your country and a city from the list.")
     user.age_min = body.age_min
     user.age_max = body.age_max
     user.city = body.city
