@@ -9,7 +9,7 @@ import { startIslandFeed, stopIslandFeed } from "../islandFeed";
 
 const NAV = [
   { id: "home", label: "World", icon: Globe2 },
-  { id: "agent", label: "My agent", icon: Brain },
+  { id: "agent", label: "My twin", icon: Brain },
   { id: "discover", label: "Discover", icon: Compass },
   { id: "dates", label: "Dates", icon: Coffee },
   { id: "insights", label: "Insights", icon: LineChart },

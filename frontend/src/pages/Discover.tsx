@@ -85,7 +85,7 @@ function Card({ c, initialVenue }: { c: Candidate; initialVenue: string }) {
           <span>
             {c.city} · {c.intent}
           </span>
-          <small className="traits-n">{c.traits} things their agent knows</small>
+          <small className="traits-n">{c.traits} things their twin knows</small>
           {(c.face as any)?.locked && <small className="locked-note">🔒 Photo after a mutual match</small>}
         </div>
       </div>
@@ -198,7 +198,7 @@ export function Discover() {
   const active = Object.values(f).filter(Boolean).length + (ages[0] > 18 || ages[1] < 70 ? 1 : 0);
   return (
     <Panel wide>
-      <Head eyebrow={"Agents near you · " + user!.city} title={<>Who should your agent <em>meet?</em></>}>
+      <Head eyebrow={"Twins near you · " + user!.city} title={<>Who should your twin <em>meet?</em></>}>
         {(res?.matches.length ?? 0) > 0 && <ExploreButton />}
       </Head>
 
@@ -265,7 +265,7 @@ export function Discover() {
           <section className="d-section">
             <h4>
               Your matches <b>{res.matches.length}</b>
-              <small>Fit both ways. Your agent can meet them now.</small>
+              <small>Fit both ways. Your twin can meet them now.</small>
             </h4>
             {res.matches.length ? (
               <div className="people">
@@ -275,7 +275,7 @@ export function Discover() {
               </div>
             ) : (
               <p className="fine">
-                {q || active ? "No matches for this search." : "No one fits both ways right now."}{" "}
+                {q || active ? "No matches for this search." : "No mutual matches yet. Soulplex is still small, so new people join every week. Check your age range and city, and your twin will meet them as soon as someone fits both ways. Your hard boundaries are never relaxed for you."}{" "}
                 {res.outside.length > 0 && "Some people below are close. They'd be happy to meet you, but they're outside your own filters."}
               </p>
             )}
@@ -299,7 +299,7 @@ export function Discover() {
                 {res.hidden > 0
                   ? `${res.hidden} ${res.hidden === 1 ? "person" : "people"} in ${user!.city} ${res.hidden === 1 ? "is" : "are"} here, but their own preferences don't include you yet (age range, intentions or must-haves). We never show people who haven't chosen to be seen by you.`
                   : "We're still growing the community here."}{" "}
-                Meanwhile, invitations from other agents arrive in Dates.
+                Meanwhile, invitations from other twins arrive in Dates.
               </p>
             </Empty>
           )}

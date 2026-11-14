@@ -2,10 +2,10 @@ import { useEffect, useRef, useState } from "react";
 import { Send, Brain, Check, ChevronRight, Sparkles, MousePointerClick, Map as MapIcon } from "lucide-react";
 import { api, VENUES } from "../api";
 import { useIslandActivity, placeOf } from "../islandFeed";
-import { IslandGrid, IslandCard, LiveDates } from "./LiveDates";
+import { IslandGrid, IslandCard, LiveDates, SceneControls } from "./LiveDates";
 import { SheetTabs, useSheetInsets } from "./SheetTabs";
 import { useStore } from "../store";
-import { Wisp, Meter, Typing, timeAgo } from "../ui";
+import { Wisp, Typing, timeAgo } from "../ui";
 import { withWorld } from "../world/WorldCanvas";
 
 function greeting() {
@@ -28,7 +28,7 @@ export function ExploreButton({ big = false }: { big?: boolean }) {
         })
       }
     >
-      <Send size={big ? 18 : 16} /> Send my agent out
+      <Send size={big ? 18 : 16} /> Let my twin explore
     </button>
   );
 }
@@ -50,16 +50,16 @@ export function Readiness() {
     },
     {
       done: !!face.kind && !face.auto, // the automatic placeholder doesn't count
-      label: "Give your agent a face: a photo or an illustration",
+      label: "Give your twin a face: a photo or an illustration",
       act: () => go("agent", "face"),
     },
   ];
   // discovery switches on by itself once they're ready; only ask if they turned it off
   if (user?.email_verified && face.kind && !face.auto && !user?.discovery)
-    required.push({ done: false, label: "Turn on discovery so agents can meet yours", act: () => go("settings") });
+    required.push({ done: false, label: "Turn on discovery so other twins can meet yours", act: () => go("settings") });
   const optional: Step[] = [
     { done: (user?.about_complete ?? 0) >= 60, label: `Complete your profile (${user?.about_complete ?? 0}%)`, act: () => openSetup(0) },
-    { done: shareable >= 3, label: `Teach your agent 3 shareable traits (${Math.min(shareable, 3)}/3)`, act: () => go("agent") },
+    { done: shareable >= 3, label: `Mark 3 things your twin may share on dates (${Math.min(shareable, 3)}/3)`, act: () => go("agent") },
   ];
   if ([...required, ...optional].every((s) => s.done)) return null;
   const ready = required.every((s) => s.done);
@@ -81,27 +81,69 @@ export function Readiness() {
   return (
     <div className="glass card ready-card">
       <h3>
-        <Sparkles size={16} /> {ready ? "Your agent can go on dates" : "Get your agent ready"}
+        <Sparkles size={16} /> {ready ? "Your twin can go on dates" : "Get your twin ready"}
       </h3>
       <p className="ready-group">
-        <span className="ready-tag req">Required</span> {ready ? "All done." : "Needed before your agent can go on dates."}
+        <span className="ready-tag req">Required</span> {ready ? "All done." : "Needed before your twin can go on dates."}
       </p>
       {list(required)}
       <p className="ready-group">
-        <span className="ready-tag opt">Optional</span> Helps your agent represent you better.
+        <span className="ready-tag opt">Optional</span> Helps your twin represent you better.
       </p>
       {list(optional)}
     </div>
   );
 }
 
+type Essential = { done: boolean; label: string; cta: string; act: () => void };
+
+/** The five things a twin needs before it can date for you. A countable list, not a score. */
+export function useEssentials(): Essential[] {
+  const { user, memories, go, openSetup, perform } = useStore();
+  const face = (user?.face ?? {}) as { kind?: string; auto?: boolean };
+  const known = memories.filter((m) => m.status === "approved").length;
+  return [
+    { done: !!user?.email_verified, label: "Email verified", cta: "Resend my link", act: () => perform(async () => void (await api("/auth/resend-verification", "POST")), "Verification link sent.") },
+    { done: !!face.kind && !face.auto, label: "A face for your twin", cta: "Choose a face", act: () => go("agent", "face") },
+    { done: (user?.about_complete ?? 0) >= 60, label: "Starter questions answered", cta: "Answer the starter questions", act: () => openSetup(0) },
+    { done: known >= 3, label: `3 things your twin knows (${Math.min(known, 3)}/3)`, cta: "Answer a quick question", act: () => go("agent") },
+    { done: !!user?.discovery, label: "Discovery switched on", cta: "Review discovery", act: () => go("settings") },
+  ];
+}
+
+export function Essentials({ compact = false }: { compact?: boolean }) {
+  const list = useEssentials();
+  const have = list.filter((e) => e.done).length;
+  return (
+    <div className={"essentials" + (compact ? " compact" : "")}>
+      <p className="essentials-head">
+        <strong>Your twin has {have} of {list.length} essentials</strong>
+        <span className="essentials-dots" aria-hidden="true">{list.map((e, i) => <i key={i} className={e.done ? "on" : ""} />)}</span>
+      </p>
+      {!compact && (
+        <ul>
+          {list.map((e) => (
+            <li key={e.label} className={e.done ? "done" : ""}>
+              <span className="tick">{e.done && <Check size={12} />}</span>
+              <span>{e.label}</span>
+              {!e.done && <button className="link" onClick={e.act}>{e.cta} <ChevronRight size={14} /></button>}
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
 export function Home() {
-  const { user, insights, scenes, go, candidates } = useStore();
+  const { user, scenes, go, candidates } = useStore();
+  const nextStep = useEssentials().find((e) => !e.done);
   const d = useIslandActivity();
   const [island, setIsland] = useState<string | null>(null);
   const [sel, setSel] = useState<string | null>(null);
   const [tab, setTab] = useState("agent"); // phone / tablet bottom-sheet tab
   const [folded, setFolded] = useState(false);
+  const [theatre, setTheatre] = useState(false);
   const sheet = useRef<HTMLDivElement>(null);
   useSheetInsets(sheet);
   const openTab = (t: string) => {
@@ -160,46 +202,50 @@ export function Home() {
       : "Wandering the island, waiting to meet someone";
 
   return (
-    <div ref={sheet} className={"home tab-" + tab + (folded ? " folded" : "")}>
+    <div ref={sheet} className={"home tab-" + tab + (folded ? " folded" : "") + (theatre ? " theatre" : "")}>
       <SheetTabs
         tab={tab}
         onTab={openTab}
         collapsed={folded}
         onToggle={() => setFolded((f) => !f)}
         tabs={[
-          ["agent", "Your agent"],
+          ["agent", "Your twin"],
           ["islands", "Islands"],
           ["live", <>Live{d ? <em className="count">{d.active}</em> : null}</>],
         ]}
       />
+      <SceneControls theatre={theatre} onTheatre={setTheatre} onReset={() => (setSel(null), setIsland(null))} />
       <div className="home-left">
         <div className="glass card agent-card">
           <div className="agent-top">
             <Wisp hue={user!.hue} size={64} self face={user!.face} seed={user!.id} />
             <div>
               <span className="eyebrow">{greeting()}, {user!.name}</span>
-              <h2>Your agent</h2>
+              <h2>Your twin</h2>
               <p className="status">
                 <span className={"live" + (active.length ? " on" : "")} /> {status}
               </p>
             </div>
           </div>
-          <div className="knows">
-            <div>
-              <span>Knows you</span>
-              <strong>{insights?.knowledge ?? 0}%</strong>
-            </div>
-            <Meter value={insights?.knowledge ?? 0} />
-            <small>
-              {insights?.traits.approved ?? 0} traits · {insights?.funnel.dates ?? 0} dates ·{" "}
-              {insights?.average != null ? insights.average + "% avg resonance" : "no resonance yet"}
-            </small>
-          </div>
+          <Essentials compact />
           <div className="agent-actions">
-            <ExploreButton />
-            <button className="btn ghost" onClick={() => go("agent")}>
-              <Brain size={16} /> Teach it
-            </button>
+            {nextStep ? (
+              <>
+                <button className="btn primary" onClick={nextStep.act}>
+                  <Sparkles size={16} /> {nextStep.cta}
+                </button>
+                <button className="link" onClick={() => go("agent")}>
+                  <Brain size={14} /> About your twin
+                </button>
+              </>
+            ) : (
+              <>
+                <ExploreButton />
+                <button className="link" onClick={() => go("agent")}>
+                  <Brain size={14} /> About your twin
+                </button>
+              </>
+            )}
           </div>
         </div>
         {invites.length > 0 && (
@@ -218,7 +264,6 @@ export function Home() {
             ))}
           </div>
         )}
-        <Readiness />
         {island ? (
           <IslandCard id={island} d={d} selected={sel} onSelect={pick} onClose={() => (setSel(null), setIsland(null))} />
         ) : (

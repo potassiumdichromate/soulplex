@@ -933,7 +933,17 @@ function route(path: string, method: string, b: Body): any {
     const c = String(b.content ?? "").trim();
     if (c.length < 3) fail(422, "Write at least a few words.");
     if (contactIn(c)) fail(422, "Keep contact details out of agent memory. Use the mutual introduction contact field.");
-    const mm: Mem = { id: uid(), user_id: u.id, category: b.category, content: c.slice(0, 600), source_quote: c.slice(0, 600), source_id: "owner-written", status: "approved", visibility: b.visibility === "private" ? "private" : "shareable", version: 1, updated: now() };
+    const vis = b.visibility === "shareable" ? "shareable" : b.visibility === "twin" ? "twin" : "private";
+    const source = b.question_id ? "quick:" + b.question_id : "owner-written";
+    const norm = (t: string) => t.toLowerCase().normalize("NFKD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9 ]+/g, " ").split(/\s+/).filter(Boolean).join(" ");
+    // one fact per question, never the same sentence twice
+    const old = db.memories.find((y) => y.user_id === u.id && y.status !== "rejected" && ((b.question_id && y.source_id === source) || norm(y.content) === norm(c)));
+    if (old) {
+      Object.assign(old, { category: b.category, content: c.slice(0, 600), source_quote: c.slice(0, 600), status: "approved", visibility: vis, version: old.version + 1, updated: now() });
+      bump(u);
+      return factData(old);
+    }
+    const mm: Mem = { id: uid(), user_id: u.id, category: b.category, content: c.slice(0, 600), source_quote: c.slice(0, 600), source_id: source, status: "approved", visibility: vis, version: 1, updated: now() };
     db.memories.push(mm);
     bump(u);
     return factData(mm);

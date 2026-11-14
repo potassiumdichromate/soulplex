@@ -29,26 +29,25 @@ from .db import (
 SCHEMA_VERSION = "1.2.0"
 NOTICE_VERSION = "2026-10-24"
 
+# Every onboarding question is four easy taps. When the last one is "other",
+# the person may type a short answer of their own (kept private).
 GENDER = [
-    ("woman", "Woman"),
-    ("man", "Man"),
-    ("nonbinary", "Non-binary"),
-    ("self_described", "I describe my gender another way"),
-    ("prefer_not", "Prefer not to say"),
+    ("woman", "Woman", "👩"),
+    ("man", "Man", "👨"),
+    ("nonbinary", "Non-binary", "🌈"),
+    ("other", "I'd describe it another way", "✏️"),
 ]
 SEEKING = [
-    ("men", "Men"),
-    ("women", "Women"),
-    ("nonbinary", "Non-binary people"),
-    ("self_described", "People who self-describe their gender"),
-    ("any", "Open to all genders"),
+    ("men", "Men", "👨"),
+    ("women", "Women", "👩"),
+    ("any", "Everyone", "💫"),
+    ("other", "Other", "✏️"),
 ]
 DISTANCE = [
-    ("10km", "Within 10 km"),
-    ("25km", "Within 25 km"),
-    ("city", "Same city"),
-    ("uae", "Anywhere in the UAE"),
-    ("nearby", "Open to nearby cities"),
+    ("10km", "Close by (10 km)", "📍"),
+    ("city", "Anywhere in my city", "🏙️"),
+    ("uae", "Anywhere in the UAE", "🇦🇪"),
+    ("nearby", "Nearby cities too", "🧭"),
 ]
 INTENT = [
     ("long_term", "Something serious", "💞"),
@@ -67,71 +66,47 @@ DEALBREAKERS = [
     ("none", "None for now"),
 ]
 VALUES = [
-    ("humor", "Great sense of humour", "😄"),
-    ("kindness", "Kind-hearted", "💗"),
-    ("honesty", "Honest", "🤝"),
-    ("listener", "A good listener", "👂"),
-    ("family", "Family-oriented", "🏡"),
-    ("ambition", "Driven", "🚀"),
-    ("adventurous", "Adventurous", "🌍"),
-    ("emotional_maturity", "Emotionally mature", "🌱"),
-    ("reliability", "Reliable", "⏰"),
-    ("curiosity", "Curious", "💡"),
-    ("independence", "Independent", "🦋"),
-    ("shared_values", "A similar outlook on life", "🧭"),
-    ("other", "Something else", "✨"),
+    ("kindness", "Kindness", "💗"),
+    ("humor", "A great sense of humour", "😄"),
+    ("honesty", "Honesty", "🤝"),
+    ("other", "Something else", "✏️"),
 ]
 # About you: easy, dating-app style picks. Icons are display-only.
 VIBE = [
-    ("humour", "Great sense of humour", "😄"),
-    ("listener", "Active listener", "👂"),
-    ("open", "Open communicator", "💬"),
-    ("direct", "Direct and candid", "🎯"),
-    ("calm", "Calm under pressure", "🧘"),
-    ("independent", "Independent", "🦋"),
-    ("caring", "Warm and caring", "🤗"),
-    ("adventurous", "Adventurous", "🌍"),
-    ("thoughtful", "Thoughtful", "💭"),
-    ("ambitious", "Ambitious", "🚀"),
-    ("homebody", "A bit of a homebody", "🏡"),
-    ("social", "Social butterfly", "🎉"),
+    ("humour", "Funny", "😄"),
+    ("calm", "Calm", "🧘"),
+    ("caring", "Caring", "🤗"),
+    ("other", "Something else", "✏️"),
 ]
 WEEKEND = [
-    ("movie_night", "A cozy movie night in", "🍿"),
-    ("cafe", "Trying a new café or restaurant", "☕"),
-    ("getaway", "A quick weekend getaway", "🧳"),
+    ("movie_night", "A cozy night in", "🍿"),
     ("friends", "Out with friends", "🎉"),
     ("outdoors", "Something outdoors", "🌿"),
-    ("recharge", "Sleeping in and recharging", "😴"),
+    ("other", "Something else", "✏️"),
 ]
 LIFE = [
-    ("career", "Growing my career", "💼"),
-    ("family", "Family time", "👨‍👩‍👧"),
-    ("balance", "Work-life balance", "⚖️"),
-    ("health", "Health and fitness", "💪"),
-    ("growth", "Learning and self-growth", "📈"),
-    ("fun", "Having fun, honestly", "🥳"),
-    ("building", "Building something of my own", "🛠️"),
+    ("career", "My career", "💼"),
+    ("family", "Family", "👨‍👩‍👧"),
+    ("balance", "A good balance", "⚖️"),
+    ("other", "Something else", "✏️"),
 ]
 HABITS = [
-    ("H01_drinking", "drinking", "Drinking", "🍷", [("no", "Never"), ("socially", "Socially"), ("yes", "Regularly")]),
-    ("H02_smoking", "smoking", "Smoking", "🚬", [("no", "Never"), ("sometimes", "Sometimes"), ("yes", "Yes")]),
-    ("H03_workout", "exercise", "Working out", "🏃", [("often", "Most days"), ("sometimes", "Sometimes"), ("rarely", "Rarely")]),
-    ("H04_diet", "diet", "Food", "🍽️", [("vegetarian", "Vegetarian"), ("eggetarian", "Eggetarian"), ("vegan", "Vegan"), ("non_veg", "Non-veg"), ("anything", "Eat anything")]),
+    ("H01_drinking", "drinking", "Do you drink?", "🍷", [("no", "Never"), ("socially", "Socially"), ("yes", "Regularly"), ("prefer_not", "Rather not say")]),
+    ("H02_smoking", "smoking", "Do you smoke?", "🚬", [("no", "Never"), ("sometimes", "Sometimes"), ("yes", "Yes"), ("prefer_not", "Rather not say")]),
+    ("H03_workout", "exercise", "Do you work out?", "🏃", [("often", "Most days"), ("sometimes", "Sometimes"), ("rarely", "Rarely"), ("never", "Never")]),
+    ("H04_diet", "diet", "What do you eat?", "🍽️", [("vegetarian", "Vegetarian"), ("vegan", "Vegan"), ("non_veg", "Non-veg"), ("other", "Other")]),
 ]
 PARTNER = [
-    ("P01_drinking", "Their drinking", "🍷", [("no", "Prefer a non-drinker"), ("socially", "Social drinking is fine"), ("any", "Doesn't matter")]),
-    ("P02_smoking", "Their smoking", "🚬", [("no", "Non-smoker, please"), ("any", "Doesn't matter")]),
-    ("P03_active", "Their activity", "🏃", [("active", "Someone active"), ("any", "Doesn't matter")]),
-    ("P04_diet", "Their food", "🍽️", [("vegetarian", "Vegetarian, please"), ("any", "Doesn't matter")]),
+    ("P01_drinking", "Their drinking", "🍷", [("no", "Non-drinker, please"), ("socially", "Social drinking is fine"), ("any", "Doesn't matter"), ("other", "Other")]),
+    ("P02_smoking", "Their smoking", "🚬", [("no", "Non-smoker, please"), ("sometimes", "Occasional is fine"), ("any", "Doesn't matter"), ("other", "Other")]),
+    ("P03_active", "Their activity", "🏃", [("active", "Very active"), ("some", "A bit active"), ("any", "Doesn't matter"), ("other", "Other")]),
+    ("P04_diet", "Their food", "🍽️", [("vegetarian", "Vegetarian, please"), ("non_veg", "Non-veg is great"), ("any", "Doesn't matter"), ("other", "Other")]),
 ]
 SCENES = [
     ("quiet_cafe", "A quiet café", "☕"),
     ("park", "A walk in the park", "🌳"),
-    ("bookshop", "A bookshop or gallery", "📖"),
-    ("activity", "A fun activity", "🎯"),
-    ("dinner", "Dinner somewhere comfortable", "🍽️"),
-    ("flexible", "Surprise me, I'm flexible", "✨"),
+    ("dinner", "Dinner somewhere cosy", "🍽️"),
+    ("other", "Somewhere else", "✏️"),
 ]
 # Optional, collected after the first preview or on the agent page. Not signup gates.
 STYLE = [
@@ -139,70 +114,51 @@ STYLE = [
         ("warm", "Warm and easy", "☀️"),
         ("direct", "Direct and clear", "🎯"),
         ("playful", "Playful, lots of banter", "😜"),
-        ("thoughtful", "Thoughtful, I take my time", "💭"),
-        ("depends", "It depends on the vibe", "🤷"),
+        ("other", "Something else", "✏️"),
     ]),
-    ("S02", "interests", "What are you into?", "multi", [
+    ("S02", "interests", "What are you into most?", "single", [
         ("films", "Movies and shows", "🎬"),
-        ("anime", "Anime", "🍥"),
-        ("cafes", "Cafés and casual dining", "☕"),
-        ("travel", "Travel and weekend getaways", "✈️"),
-        ("music", "Music", "🎧"),
-        ("books", "Reading", "📚"),
-        ("food", "Cooking and food", "🍳"),
-        ("fitness", "Fitness", "💪"),
-        ("outdoors", "Hikes and the outdoors", "🥾"),
-        ("sport", "Sports", "⚽"),
-        ("games", "Gaming", "🎮"),
-        ("art", "Art and design", "🎨"),
-        ("photography", "Photography", "📷"),
-        ("family", "Time with family", "👨‍👩‍👧"),
+        ("travel", "Travel", "✈️"),
+        ("fitness", "Fitness and sport", "💪"),
+        ("other", "Something else", "✏️"),
     ]),
-    ("S03", "personal_values", "Which values are yours, not a partner's?", "multi", [
-        ("kindness", "Kindness"),
-        ("honesty", "Honesty"),
-        ("curiosity", "Curiosity"),
-        ("loyalty", "Loyalty"),
-        ("growth", "Growth"),
-        ("freedom", "Freedom"),
-        ("family", "Family"),
-        ("faith", "Faith"),
+    ("S03", "personal_values", "Which value is most yours?", "single", [
+        ("kindness", "Kindness", "💗"),
+        ("honesty", "Honesty", "🤝"),
+        ("family", "Family", "🏡"),
+        ("other", "Something else", "✏️"),
     ]),
     ("S04", "authentic_voice", "How should your twin sound?", "single", [
-        ("like_me", "Sound like I do"),
-        ("warmer", "A little warmer than I am"),
-        ("shorter", "Shorter and simpler"),
-        ("formal", "A bit more formal"),
-        ("depends", "It depends who I am talking to"),
+        ("like_me", "Just like me", "🙂"),
+        ("warmer", "A little warmer", "☀️"),
+        ("shorter", "Short and simple", "✂️"),
+        ("formal", "A bit more formal", "👔"),
     ]),
 ]
 CONTEXTUAL = [
     ("Q06", "communication_style", "pre_introduction", "How do you like a first conversation to flow?", [
-        ("thoughtful", "Thoughtful conversations, even if less frequent"),
-        ("frequent", "Frequent check-ins and conversations"),
-        ("in_person", "I connect best in person"),
-        ("light_playful", "Light, playful conversations at first"),
-        ("depends", "It depends on the person"),
+        ("light_playful", "Light and playful"),
+        ("thoughtful", "Slow and thoughtful"),
+        ("in_person", "I'd rather just meet"),
+        ("depends", "Depends on the person"),
     ]),
-    ("Q07", "disagreement_style", "post_date", "How would you normally handle a disagreement?", [
-        ("ask", "Ask questions to understand their perspective"),
-        ("direct", "Express my point of view directly"),
-        ("reflect", "Take a moment to think before responding"),
+    ("Q07", "disagreement_style", "post_date", "When you disagree with someone, you usually…", [
+        ("ask", "Ask questions first"),
+        ("direct", "Say what I think"),
+        ("reflect", "Take a moment"),
         ("common_ground", "Look for common ground"),
-        ("depends", "It depends on the situation"),
     ]),
-    ("Q08", "planning_style", "pre_date", "Would you rather make a plan or keep things spontaneous?", [
-        ("spontaneous", "I love spontaneous plans"),
-        ("plan", "I prefer making plans in advance"),
-        ("mix", "A healthy mix of both"),
-        ("depends", "It depends on the situation"),
+    ("Q08", "planning_style", "pre_date", "Plans or spontaneous?", [
+        ("spontaneous", "Spontaneous"),
+        ("plan", "Plans, please"),
+        ("mix", "A bit of both"),
+        ("depends", "Depends on the day"),
     ]),
-    ("Q09", "bill_preference", "cafe_bill", "When the bill comes, what would feel comfortable?", [
-        ("split", "Suggesting we split the bill"),
-        ("offer", "Offering to pay"),
-        ("treated", "Accepting when the other person offers"),
-        ("flexible", "Deciding together"),
-        ("depends", "It depends on the situation"),
+    ("Q09", "bill_preference", "cafe_bill", "When the bill comes, you'd rather…", [
+        ("split", "Split it"),
+        ("offer", "Offer to pay"),
+        ("flexible", "Decide together"),
+        ("depends", "Depends on the date"),
     ]),
 ]
 CALIBRATION = [
@@ -216,14 +172,12 @@ CALIBRATION = [
         ("check", "Send a friendly check-in"),
         ("wait", "Wait a little longer"),
         ("boundary", "Say that updates and punctuality matter to me"),
-        ("leave", "Leave if there is still no update"),
         ("depends", "It depends"),
     ]),
     ("CAL03", "Your boundary", "Someone you are just meeting asks a question that feels too personal. What would you say?", [
         ("boundary", "I would rather not discuss that yet"),
         ("brief", "Give a brief answer and move on"),
         ("redirect", "Change the subject"),
-        ("why", "Ask why they want to know"),
         ("depends", "It depends"),
     ]),
 ]
@@ -258,6 +212,7 @@ CONSENTS = [
 ]
 SCOPES = ("private", "twin", "shareable")
 GENDER_PROFILE = {
+    "other": "self-described",
     "woman": "woman",
     "man": "man",
     "nonbinary": "nonbinary",
@@ -265,6 +220,7 @@ GENDER_PROFILE = {
     "prefer_not": "prefer_not",
 }
 SEEK_PROFILE = {
+    "other": ["nonbinary", "self-described"],
     "men": ["man"],
     "women": ["woman"],
     "nonbinary": ["nonbinary"],
@@ -300,7 +256,7 @@ def _field(field_id, storage, prompt, kind, options, *, required=False, maximum=
         "required": required,
         "maximum": maximum,
         "skip": skip,
-        "text_max": text_max,
+        "text_max": text_max or (80 if any(row[0] == "other" for row in options) else 0),
         "options": _opts(options),
         "schema_version": SCHEMA_VERSION,
     }
@@ -313,18 +269,18 @@ def schema():
         "order": ["welcome", "age", "Q01_gender", "A01_vibe", "S02", "A03_weekend", "A04_life", "habits", "S01", "Q01_seeking", "ages", "Q01_distance", "Q02", "partner", "Q04", "Q05", "preview", "facts", "permissions", "ready"],
         "fields": [
             _field("Q01_gender", "match_preferences", "My gender (private)", "single", GENDER, required=True, skip=False),
-            _field("Q01_seeking", "match_preferences", "Genders I'd like to meet", "multi", SEEKING, required=True, maximum=4, skip=False),
+            _field("Q01_seeking", "match_preferences", "Who would you like to meet?", "single", SEEKING, required=True, skip=False),
             _field("Q01_distance", "match_preferences", "Where should your twin look?", "single", DISTANCE, required=True, skip=False),
             _field("Q02", "relationship_intent", "What kind of connection are you open to?", "single", INTENT, required=True, skip=False),
             _field("Q03", "dealbreakers", "Anything that is a definite no?", "multi", DEALBREAKERS, maximum=3, text_max=140),
-            _field("Q04", "partner_values", "Which three qualities would really matter to you?", "multi", VALUES, maximum=3, text_max=100),
+            _field("Q04", "partner_values", "What matters most in a partner?", "single", VALUES),
             _field("Q05", "date_comfort", "Where would you feel most yourself?", "single", SCENES),
-            _field("A01_vibe", "about_vibe", "How would your friends describe you?", "multi", VIBE, maximum=4),
+            _field("A01_vibe", "about_vibe", "How would your friends describe you?", "single", VIBE),
             _field("A03_weekend", "about_weekend", "Your perfect weekend looks like…", "single", WEEKEND),
-            _field("A04_life", "about_life", "What matters most to you right now?", "multi", LIFE, maximum=3),
+            _field("A04_life", "about_life", "What matters most to you right now?", "single", LIFE),
             *[_field(fid, "habits", label, "single", options) | {"icon": icon, "group": "habits"} for fid, _key, label, icon, options in HABITS],
             *[_field(fid, "partner_preferences", label, "single", options) | {"icon": icon, "group": "partner"} for fid, label, icon, options in PARTNER],
-            *[_field(fid, storage, prompt, kind, options, maximum=6 if fid == "S02" else 3 if fid == "S03" else 1) for fid, storage, prompt, kind, options in STYLE],
+            *[_field(fid, storage, prompt, kind, options) for fid, storage, prompt, kind, options in STYLE],
             *[_field(fid, storage, prompt, "single", options) | {"trigger": trigger} for fid, storage, trigger, prompt, options in CONTEXTUAL],
         ],
         "calibration_order": ORDER,
@@ -388,7 +344,7 @@ def validate_answer(field_id, option_ids, free_text, status):
     if len(ids) > field["maximum"]:
         raise ValueError(f"Choose at most {field['maximum']}.")
     if "any" in ids and ids != ["any"]:
-        raise ValueError("Open to all genders stands on its own.")
+        raise ValueError("Everyone stands on its own.")
     if "none" in ids and ids != ["none"]:
         raise ValueError("None for now stands on its own.")
     text = (free_text or "").strip()
@@ -405,18 +361,18 @@ def apply_profile(user, answers):
     by = {a.field_id: a for a in answers if a.status == "answered"}
     gender = by.get("Q01_gender")
     if gender:
-        user.gender = GENDER_PROFILE[gender.option_ids[0]]
+        user.gender = GENDER_PROFILE.get(gender.option_ids[0], "self-described")
     seeking = by.get("Q01_seeking")
     if seeking:
         picked = []
         for option in seeking.option_ids:
-            for value in SEEK_PROFILE[option]:
+            for value in SEEK_PROFILE.get(option, []):
                 if value not in picked:
                     picked.append(value)
         user.seeking = picked
     intent = by.get("Q02")
     if intent:
-        user.intent = INTENT_PROFILE[intent.option_ids[0]]
+        user.intent = INTENT_PROFILE.get(intent.option_ids[0], "dating")
     if by.get("Q03"):
         about["studio_dealbreakers"] = list(by["Q03"].option_ids)
     elif any(a.field_id == "Q03" and a.status == "skipped" for a in answers):
@@ -453,7 +409,7 @@ def apply_profile(user, answers):
     if musts or "dealbreakers" in about:
         about["dealbreakers"] = musts
     if by.get("P03_active"):
-        about["partner_active"] = by["P03_active"].option_ids[0] == "active"
+        about["partner_active"] = by["P03_active"].option_ids[0] in ("active", "some")
     user.about = about
 
 
@@ -469,48 +425,71 @@ def cities_fit(a, b):
 def preview_lines(answers):
     """A mirror of what the owner chose. Not a reading of their personality."""
     by = {a.field_id: a for a in answers if a.status == "answered"}
+
+    def said(fid):
+        """The picked label, or the person's own words when they chose Other."""
+        row = by.get(fid)
+        if not row or not row.option_ids:
+            return ""
+        if row.option_ids[0] == "other":
+            return (row.free_text or "").strip()
+        return label_of(fid, row.option_ids[0]).lower()
+
     lines = []
     mine = []
-    if by.get("Q01_gender"):
-        lines.append("You described your gender as " + label_of("Q01_gender", by["Q01_gender"].option_ids[0]) + ".")
-    if by.get("Q01_seeking"):
-        labels = [label_of("Q01_seeking", i) for i in by["Q01_seeking"].option_ids]
-        lines.append("You'd like to meet " + ", ".join(x.lower() for x in labels) + ".")
-    if by.get("Q02"):
-        lines.append("You're looking for: " + label_of("Q02", by["Q02"].option_ids[0]).lower() + ".")
-    if by.get("Q04"):
-        labels = [label_of("Q04", i) for i in by["Q04"].option_ids if i != "other"]
-        if labels:
-            lines.append("What would win you over: " + ", ".join(x.lower() for x in labels) + ".")
-    if by.get("Q05"):
-        lines.append("Ideal first date: " + label_of("Q05", by["Q05"].option_ids[0]).lower() + ".")
-    if by.get("A01_vibe"):
-        mine.append("Friends would call you: " + ", ".join(label_of("A01_vibe", i).lower() for i in by["A01_vibe"].option_ids) + ".")
-    if by.get("S02"):
-        mine.append("You're into " + ", ".join(label_of("S02", i).lower() for i in by["S02"].option_ids) + ".")
-    if by.get("A03_weekend"):
-        mine.append("Your perfect weekend: " + label_of("A03_weekend", by["A03_weekend"].option_ids[0]).lower() + ".")
-    if by.get("A04_life"):
-        mine.append("What matters right now: " + ", ".join(label_of("A04_life", i).lower() for i in by["A04_life"].option_ids) + ".")
+    if said("Q01_gender"):
+        lines.append("You described your gender as " + said("Q01_gender") + ".")
+    if said("Q01_seeking"):
+        lines.append("You'd like to meet " + said("Q01_seeking") + ".")
+    if said("Q02"):
+        lines.append("You're looking for: " + said("Q02") + ".")
+    if said("Q04"):
+        lines.append("What would win you over: " + said("Q04") + ".")
+    if said("Q05"):
+        lines.append("Ideal first date: " + said("Q05") + ".")
+    if said("A01_vibe"):
+        mine.append("Friends would call you " + said("A01_vibe") + ".")
+    if said("S02"):
+        mine.append("You're into " + said("S02") + ".")
+    if said("A03_weekend"):
+        mine.append("Your perfect weekend: " + said("A03_weekend") + ".")
+    if said("A04_life"):
+        mine.append("What matters right now: " + said("A04_life") + ".")
     say = {
         "H01_drinking": {"no": "don't drink", "socially": "drink socially", "yes": "enjoy a drink regularly"},
         "H02_smoking": {"no": "don't smoke", "sometimes": "smoke sometimes", "yes": "smoke"},
-        "H03_workout": {"often": "work out most days", "sometimes": "work out sometimes", "rarely": "rarely work out"},
+        "H03_workout": {"often": "work out most days", "sometimes": "work out sometimes", "rarely": "rarely work out", "never": "don't work out"},
         "H04_diet": {"vegetarian": "are vegetarian", "eggetarian": "are eggetarian", "vegan": "are vegan", "non_veg": "eat non-veg", "anything": "eat anything"},
     }
-    habit_bits = [say[fid][by[fid].option_ids[0]] for fid, *_rest in HABITS if by.get(fid)]
+    habit_bits = []
+    for fid, *_rest in HABITS:
+        row = by.get(fid)
+        if not row or not row.option_ids:
+            continue
+        if row.option_ids[0] == "other" and (row.free_text or "").strip():
+            habit_bits.append("eat " + row.free_text.strip())
+        elif row.option_ids[0] in say[fid]:
+            habit_bits.append(say[fid][row.option_ids[0]])
     if habit_bits:
         joined = ", ".join(habit_bits[:-1]) + (" and " if len(habit_bits) > 1 else "") + habit_bits[-1]
         mine.append("You " + joined + ".")
-    if by.get("S01"):
-        mine.append("Chatting with someone new, you're " + label_of("S01", by["S01"].option_ids[0]).lower() + ".")
+    if said("S01"):
+        mine.append("Chatting with someone new, you're " + said("S01") + ".")
     want_say = {
         "P01_drinking": {"no": "a non-drinker", "socially": "someone who drinks only socially"},
-        "P02_smoking": {"no": "a non-smoker"},
-        "P03_active": {"active": "someone active"},
-        "P04_diet": {"vegetarian": "a vegetarian"},
+        "P02_smoking": {"no": "a non-smoker", "sometimes": "someone who smokes rarely, if at all"},
+        "P03_active": {"active": "someone very active", "some": "someone a bit active"},
+        "P04_diet": {"vegetarian": "a vegetarian", "non_veg": "someone who eats non-veg"},
     }
-    wants = [want_say[fid][by[fid].option_ids[0]] for fid, *_rest in PARTNER if by.get(fid) and by[fid].option_ids[0] in want_say[fid]]
+    wants = []
+    for fid, *_rest in PARTNER:
+        row = by.get(fid)
+        if not row or not row.option_ids:
+            continue
+        if row.option_ids[0] == "other" and (row.free_text or "").strip():
+            wants.append(row.free_text.strip())
+        elif row.option_ids[0] in want_say[fid]:
+            wants.append(want_say[fid][row.option_ids[0]])
     if wants:
         lines.append("You'd prefer " + (", ".join(wants[:-1]) + " and " if len(wants) > 1 else "") + wants[-1] + ".")
     if by.get("Q03") and by["Q03"].option_ids != ["none"]:
@@ -611,7 +590,9 @@ def consents_for(db, user_id):
 def granted(db, user, purpose):
     rows = consents_for(db, user.id)
     if not rows:
-        return True
+        # Opt-in only: a member who never answered has said no. Fictional demo twins
+        # (synthetic accounts) carry no consent rows and only meet each other.
+        return bool(getattr(user, "synthetic", False))
     return any(row.purpose == purpose and row.granted for row in rows)
 
 

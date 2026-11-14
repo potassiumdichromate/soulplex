@@ -86,7 +86,9 @@ def test_permissions_default_off_and_blind_run_omits_owner_answer(client, login,
     login("maya")
     client.headers["X-CSRF-Token"] = client.headers["X-CSRF-Token"]
     perms = client.get("/api/privacy/permissions").json()
-    assert all(value is False for value in perms["grants"].values())
+    # seeded demo members opted in to dating; outside processing and research stay off
+    # (fresh accounts start with everything off: see test_readiness)
+    assert perms["grants"]["allow_external_minds"] is False and perms["grants"]["allow_research_feedback"] is False
     age = client.post("/api/onboarding/age", json={"adult": True})
     assert age.status_code == 200, age.text
     saved = client.put(

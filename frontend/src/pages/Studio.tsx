@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { ArrowLeft, ArrowRight, Check, X, Sparkles, ShieldCheck, MessageCircle } from "lucide-react";
+import { ArrowLeft, ArrowRight, Check, X, Sparkles, ShieldCheck } from "lucide-react";
 import { api } from "../api";
 import { CityPicker } from "../CityPicker";
 import { useStore } from "../store";
@@ -38,27 +38,26 @@ const LOOKING = new Set(["Q01_seeking", "ages", "Q01_distance", "Q02", "partner"
 
 /* The twin talks; the person taps. Titles are what the twin says, hints are the small print. */
 const COPY: Record<string, { title: string; hint: string }> = {
-  welcome: { title: "Hey, I'm your twin 👋", hint: "I'll go on the first dates for you, so I'd love to get to know you a little. No essays: just tap what feels like you. Takes about two minutes." },
+  welcome: { title: "Hey, I'm your twin 👋", hint: "I'll go on the first dates for you, so I'd love to get to know you a little. Every question has four answers: just tap one. Takes about two minutes." },
   age: { title: "Quick thing first", hint: "Soulplex is for adults. Everything you tell me stays private until you choose to share it, and you can skip anything." },
   Q01_gender: { title: "Let's start with you. I am a…", hint: "This only helps me find people who'd like to meet you too." },
-  A01_vibe: { title: "How would your friends describe you?", hint: "Pick up to 4." },
-  S02: { title: "What are you into?", hint: "Pick up to 6, the things you could talk about for hours." },
+  A01_vibe: { title: "How would your friends describe you?", hint: "Just pick the closest one." },
+  S02: { title: "What are you into most?", hint: "The thing you could talk about for hours." },
   A03_weekend: { title: "Your perfect weekend looks like…", hint: "Just pick the one that sounds most like you." },
-  A04_life: { title: "What matters most to you right now?", hint: "Up to 3. Career, family, a bit of everything?" },
+  A04_life: { title: "What matters most to you right now?", hint: "No wrong answer." },
   habits: { title: "A few quick lifestyle bits", hint: "Tap what fits. Skip anything you'd rather not say." },
   S01: { title: "When you're chatting with someone new, you're usually…", hint: "So I can sound like you on dates." },
-  Q01_seeking: { title: "Now, who would you like to meet?", hint: "Pick everyone you're open to." },
+  Q01_seeking: { title: "Now, who would you like to meet?", hint: "You can change this any time." },
   ages: { title: "What age range feels right?", hint: "You can change this any time." },
   Q01_distance: { title: "How far should I look?", hint: "Other cities only if you both say yes." },
   Q02: { title: "What are you hoping to find?", hint: "No wrong answer here." },
   partner: { title: "Any preferences about their lifestyle?", hint: "\u201cDoesn't matter\u201d keeps things open. I'll only rule people out on what you pick here." },
-  Q04: { title: "What would make you fall for someone?", hint: "Pick up to 3." },
+  Q04: { title: "What matters most in a partner?", hint: "Pick the one that matters most." },
   Q05: { title: "Where would you feel most yourself on a first date?", hint: "I'll start our dates there." },
   preview: { title: "Here's you, in a nutshell", hint: "This is just what you picked, not a personality test. Untick anything that doesn't sound right." },
-  calibration: { title: "Let's see if I get you", hint: "You answer first, then I guess. Tell me how close I got." },
   facts: { title: "Who gets to see what?", hint: "Everything starts private. Make something shareable only if you want me to mention it on dates." },
   permissions: { title: "What I'm allowed to do", hint: "Every switch starts off. Turn on only what you're comfortable with." },
-  ready: { title: "That's it, we're ready! 🎉", hint: "You can tell me more any time from the Agent tab." },
+  ready: { title: "That's it, we're ready! 🎉", hint: "You can answer a few more quick questions any time from the Twin tab." },
   H01_drinking: { title: "Drinking", hint: "" }, H02_smoking: { title: "Smoking", hint: "" }, H03_workout: { title: "Working out", hint: "" }, H04_diet: { title: "Food", hint: "" },
   P01_drinking: { title: "Their drinking", hint: "" }, P02_smoking: { title: "Their smoking", hint: "" }, P03_active: { title: "Their activity", hint: "" }, P04_diet: { title: "Their food", hint: "" },
   Q03: { title: "Definite nos", hint: "" },
@@ -73,10 +72,11 @@ export function Studio({ onClose }: { start?: number; onClose: () => void }) {
   const [schema, setSchema] = useState<Schema | null>(null);
   const [step, setStep] = useState(0);
   const [answers, setAnswers] = useState<Record<string, Answer>>({});
-  const [mode, setMode] = useState<"taps" | "talk">("taps");
-  const [talk, setTalk] = useState("");
-  const [guess, setGuess] = useState<Option | null>(null);
+  const mode = "taps";
   const [note, setNote] = useState("");
+  // "Other" was tapped on this question: show a small box for their own words
+  const [other, setOther] = useState<string | null>(null);
+  const [notes, setNotes] = useState<Record<string, string>>({});
   const [ageMin, setAgeMin] = useState(user?.age_min ?? 25);
   const [ageMax, setAgeMax] = useState(user?.age_max ?? 40);
   const [city, setCity] = useState(user?.city || "");
@@ -99,7 +99,6 @@ export function Studio({ onClose }: { start?: number; onClose: () => void }) {
       if (state.fidelity?.label) setFidelity(state.fidelity.label);
       const resume = STEPS.indexOf(state.studio?.step);
       if (resume > 0) setStep(resume);
-      if (state.studio?.mode === "talk") setMode("talk");
     });
   }, []);
 
@@ -117,8 +116,7 @@ export function Studio({ onClose }: { start?: number; onClose: () => void }) {
       });
       setAnswers((prev) => ({ ...prev, [fieldId]: row }));
       setNote("");
-      setGuess(null);
-      setTalk("");
+      setOther(null);
     });
 
   const exit = () =>
@@ -127,39 +125,8 @@ export function Studio({ onClose }: { start?: number; onClose: () => void }) {
       onClose();
     }, "Saved. You can resume this step.");
 
-  const next = () => setStep((n) => Math.min(STEPS.length - 1, n + 1));
-  const back = () => setStep((n) => Math.max(0, n - 1));
-
-  const toggle = (option: Option) => {
-    if (!field) return;
-    if (field.kind === "single" || option.id === "any" || option.id === "none") {
-      saveAnswer(field.field_id, selected.length === 1 && selected[0] === option.id ? [] : [option.id]).then?.(() => {});
-      setAnswers((prev) => ({
-        ...prev,
-        [field.field_id]: { field_id: field.field_id, option_ids: [option.id], free_text: "", status: "answered" },
-      }));
-      return;
-    }
-    const has = selected.includes(option.id);
-    let ids = has ? selected.filter((x) => x !== option.id) : [...selected.filter((x) => x !== "any" && x !== "none"), option.id];
-    ids = ids.slice(0, field.maximum);
-    setAnswers((prev) => ({
-      ...prev,
-      [field.field_id]: { field_id: field.field_id, option_ids: ids, free_text: note, status: "answered" },
-    }));
-  };
-
-  const commitMulti = () => {
-    if (!field || !selected.length) return;
-    saveAnswer(field.field_id, selected).then((ok) => ok && next());
-  };
-
-  const hear = () => {
-    if (!field) return;
-    const text = talk.toLowerCase();
-    const hit = field.options.find((o) => text.includes(o.label.toLowerCase()) || text.includes(o.id.replaceAll("_", " ")));
-    setGuess(hit ?? null);
-  };
+  const next = () => { setOther(null); setNote(""); setStep((n) => Math.min(STEPS.length - 1, n + 1)); };
+  const back = () => { setOther(null); setNote(""); setStep((n) => Math.max(0, n - 1)); };
 
   const loadPreview = () =>
     perform(async () => {
@@ -196,8 +163,13 @@ export function Studio({ onClose }: { start?: number; onClose: () => void }) {
   const group = GROUPS[id];
   const pickInGroup = (f: Field, o: Option) => {
     const same = answers[f.field_id]?.option_ids?.[0] === o.id && answers[f.field_id]?.status === "answered";
-    setAnswers((prev) => ({ ...prev, [f.field_id]: { field_id: f.field_id, option_ids: same ? [] : [o.id], free_text: "", status: same ? "skipped" : "answered" } }));
-    saveAnswer(f.field_id, same ? [] : [o.id], same ? "skipped" : "answered", "");
+    const free = !same && o.id === "other" ? (notes[f.field_id] ?? answers[f.field_id]?.free_text ?? "") : "";
+    setAnswers((prev) => ({ ...prev, [f.field_id]: { field_id: f.field_id, option_ids: same ? [] : [o.id], free_text: free, status: same ? "skipped" : "answered" } }));
+    saveAnswer(f.field_id, same ? [] : [o.id], same ? "skipped" : "answered", free);
+  };
+  const saveGroupNote = (f: Field) => {
+    const text = (notes[f.field_id] ?? "").trim();
+    if (answers[f.field_id]?.option_ids?.[0] === "other" && text !== (answers[f.field_id]?.free_text ?? "")) saveAnswer(f.field_id, ["other"], "answered", text);
   };
 
   return (
@@ -251,10 +223,15 @@ export function Studio({ onClose }: { start?: number; onClose: () => void }) {
                       );
                     })}
                   </div>
+                  {answers[f!.field_id]?.status === "answered" && answers[f!.field_id]?.option_ids?.[0] === "other" && (
+                    <input className="studio-other" type="text" maxLength={f!.text_max || 80} placeholder="In your own words (optional)"
+                      value={notes[f!.field_id] ?? answers[f!.field_id]?.free_text ?? ""}
+                      onChange={(e) => setNotes({ ...notes, [f!.field_id]: e.target.value })} onBlur={() => saveGroupNote(f!)} />
+                  )}
                 </div>
               ))}
               <div className="btn-row">
-                <button className="btn primary" disabled={busy} onClick={next}>Continue <ArrowRight size={16} /></button>
+                <button className="btn primary" disabled={busy} onClick={() => { group.forEach((fid) => { const f = fieldOf(schema, fid); if (f) saveGroupNote(f); }); next(); }}>Continue <ArrowRight size={16} /></button>
               </div>
             </div>
           )}
@@ -272,33 +249,28 @@ export function Studio({ onClose }: { start?: number; onClose: () => void }) {
           )}
           {field && id !== "ages" && !group && (
             <>
-              {mode === "talk" && (
-                <div className="studio-talk">
-                  <textarea value={talk} maxLength={400} placeholder="Type it however you like, I'll match it to an option." onChange={(e) => setTalk(e.target.value)} />
-                  <button className="btn ghost sm" type="button" onClick={hear}>Match a choice</button>
-                  {guess && <p className="fine">Sounds like “{guess.label}”. Tap it below to confirm.</p>}
-                  {talk && !guess && <p className="fine">Hmm, I couldn't match that. Pick the closest one below.</p>}
-                </div>
-              )}
-              <div className="w-chips big">
-                {field.options.map((o) => (
-                  <button key={o.id} type="button" className={selected.includes(o.id) || guess?.id === o.id ? "on" : ""} aria-pressed={selected.includes(o.id)} onClick={() => {
-                    if (field.kind === "single") {
-                      saveAnswer(field.field_id, [o.id]).then((ok) => ok && next());
-                    } else toggle(o);
-                  }}>{o.icon && <span className="chip-ico" aria-hidden="true">{o.icon}</span>}{o.label}</button>
-                ))}
+              <div className="w-chips big four">
+                {field.options.map((o) => {
+                  const on = other !== null ? o.id === "other" : selected.includes(o.id);
+                  return (
+                    <button key={o.id} type="button" className={on ? "on" : ""} aria-pressed={on} disabled={busy} onClick={() => {
+                      if (o.id === "other" && field.text_max > 0) {
+                        setOther(answers[id]?.option_ids?.[0] === "other" ? answers[id]?.free_text ?? "" : "");
+                        return;
+                      }
+                      saveAnswer(field.field_id, [o.id], "answered", "").then((ok) => ok && next());
+                    }}>{o.icon && <span className="chip-ico" aria-hidden="true">{o.icon}</span>}{o.label}</button>
+                  );
+                })}
               </div>
-              {field.kind === "multi" && field.maximum > 1 && <p className="fine studio-count">{selected.length} of {field.maximum} picked</p>}
-              {(selected.includes("other") || selected.includes("depends")) && field.text_max > 0 && (
-                <textarea value={note} maxLength={field.text_max} placeholder="Optional note. It stays private until you approve it." onChange={(e) => setNote(e.target.value)} />
+              {other !== null && (
+                <form className="studio-other-row" onSubmit={(e) => { e.preventDefault(); saveAnswer(field.field_id, ["other"], "answered", other.trim()).then((ok) => ok && next()); }}>
+                  <input className="studio-other" type="text" autoFocus maxLength={field.text_max} placeholder="Tell me in a few words" value={other} onChange={(e) => setOther(e.target.value)} />
+                  <button className="btn primary" disabled={busy || !other.trim()}>Continue <ArrowRight size={16} /></button>
+                </form>
               )}
               <div className="btn-row">
-                {field.kind === "multi" && <button className="btn primary" disabled={!selected.length || busy} onClick={commitMulti}>Continue <ArrowRight size={16} /></button>}
                 {field.skip && <button className="btn ghost" disabled={busy} onClick={() => { saveAnswer(field.field_id, [], "skipped", "").then((ok) => ok && next()); }}>Skip</button>}
-                <button className="link" type="button" onClick={() => setMode(mode === "talk" ? "taps" : "talk")}>
-                  <MessageCircle size={14} /> {mode === "talk" ? "Just tap instead" : "Say it in my own words"}
-                </button>
               </div>
             </>
           )}

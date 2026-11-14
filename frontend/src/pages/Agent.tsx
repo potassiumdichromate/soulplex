@@ -1,26 +1,18 @@
-import { useEffect, useRef, useState } from "react";
-import { Send, Plus, Trash2, Check, Globe2, Lock, MessageCircle, ListChecks, Inbox, Pencil, X, Smile, Camera } from "lucide-react";
-import { api, CATEGORIES, STATIC, type Memory } from "../api";
+import { useState } from "react";
+import { Trash2, Check, Globe2, Lock, ListChecks, Inbox, Pencil, X, Smile, Camera, ChevronLeft, ChevronRight, HelpCircle } from "lucide-react";
+import { api, CATEGORIES, type Memory } from "../api";
 import { useStore } from "../store";
 import { Panel, Head } from "./Shell";
-import { Wisp, Ring, Empty, Typing } from "../ui";
-import { VoiceInput } from "../VoiceInput";
+import { Wisp, Empty } from "../ui";
+import { QUICK_QUESTIONS, sentence } from "../quickQuestions";
+import { Essentials } from "./Home";
 import { FaceStudio } from "./FaceStudio";
 import { CoachCard } from "./Studio";
-
-const PROMPTS: Record<string, string[]> = {
-  values: ["I feel most respected when…", "A dealbreaker for me is…"],
-  lifestyle: ["My perfect Sunday looks like…", "On a weeknight you'll usually find me…"],
-  communication: ["When we disagree, I tend to…", "I show I care by…"],
-  future: ["In three years I'd love to be…", "Family to me means…"],
-  interests: ["I could talk for hours about…", "Something I'm learning right now is…"],
-  backstory: ["A moment that changed me was…"],
-  boundaries: ["Please don't rush me on…", "I need time alone when…"],
-};
 
 function TraitCard({ m }: { m: Memory }) {
   const { perform, load, openSetup } = useStore();
   const fromProfile = m.source_id.startsWith("about:");
+  const fromQuestion = m.source_id.startsWith("quick:");
   const [edit, setEdit] = useState(false);
   const [text, setText] = useState(m.content);
   const cat = CATEGORIES.find((c) => c.id === m.category);
@@ -55,20 +47,20 @@ function TraitCard({ m }: { m: Memory }) {
           From your profile · edit there
         </button>
       )}
-      {!fromProfile && m.source_id !== "owner-written" && m.source_quote !== m.content && (
+      {!fromProfile && !fromQuestion && m.source_id !== "owner-written" && m.source_quote !== m.content && (
         <details>
-          <summary>From your interview</summary>
+          <summary>Where this came from</summary>
           <q>{m.source_quote}</q>
         </details>
       )}
       <div className="trait-actions">
         {m.status === "proposed" ? (
           <>
-            <button className="btn primary sm" onClick={() => save("shareable")}>
-              <Check size={14} /> Approve &amp; share
+            <button className="btn primary sm" onClick={() => save("private")}>
+              <Check size={14} /> Approve (private)
             </button>
-            <button className="btn ghost sm" onClick={() => save("private")}>
-              <Lock size={14} /> Keep private
+            <button className="btn ghost sm" onClick={() => save("shareable")}>
+              <Globe2 size={14} /> Approve and share
             </button>
             <button className="link" onClick={() => save(m.visibility, "rejected", m.content)}>
               Reject
@@ -83,19 +75,19 @@ function TraitCard({ m }: { m: Memory }) {
               <X size={15} />
             </button>
           </>
-        ) : fromProfile ? null : (
-          <button className="icon-btn" aria-label="Edit trait" onClick={() => setEdit(true)}>
+        ) : fromProfile || fromQuestion ? null : (
+          <button className="icon-btn" aria-label="Edit" onClick={() => setEdit(true)}>
             <Pencil size={15} />
           </button>
         )}
         <button
           className="icon-btn danger"
-          aria-label="Delete trait"
+          aria-label="Forget this"
           onClick={() =>
             perform(async () => {
               await api("/memories/" + m.id, "DELETE");
               await load();
-            }, "Trait removed. Your agent will see future people with fresh eyes.")
+            }, "Forgotten. Your twin won't use this any more.")
           }
         >
           <Trash2 size={15} />
@@ -105,255 +97,129 @@ function TraitCard({ m }: { m: Memory }) {
   );
 }
 
-function AddTrait() {
-  const { perform, load, busy, insights } = useStore();
-  const [cat, setCat] = useState(() => CATEGORIES.find((c) => !insights?.coverage[c.id])?.id ?? "values");
-  const [text, setText] = useState("");
-  const [share, setShare] = useState(true);
-  const c = CATEGORIES.find((x) => x.id === cat)!;
+/** One question at a time, four answers each. "Other" opens a box for their own words. */
+function QuickQuestions() {
+  const { memories, perform, load, busy } = useStore();
+  const answered = new Map(memories.filter((m) => m.source_id.startsWith("quick:")).map((m) => [m.source_id.slice(6), m]));
+  const firstOpen = QUICK_QUESTIONS.findIndex((q) => !answered.has(q.id));
+  const [at, setAt] = useState(firstOpen < 0 ? 0 : firstOpen);
+  const [other, setOther] = useState<string | null>(null);
+  const [share, setShare] = useState(false);
+  const q = QUICK_QUESTIONS[at];
+  const done = QUICK_QUESTIONS.filter((x) => answered.has(x.id)).length;
+  const go = (n: number) => { setOther(null); setAt((n + QUICK_QUESTIONS.length) % QUICK_QUESTIONS.length); };
+  const save = (answer: string) =>
+    perform(async () => {
+      await api("/memories", "POST", { category: q.category, content: sentence(q, answer), visibility: share ? "shareable" : "private", question_id: q.id });
+      await load();
+      const nextOpen = QUICK_QUESTIONS.findIndex((x, i) => i > at && !answered.has(x.id));
+      go(nextOpen < 0 ? at + 1 : nextOpen);
+    });
+  const current = answered.get(q.id);
   return (
-    <form
-      className="add-trait"
-      onSubmit={(e) => {
-        e.preventDefault();
-        perform(async () => {
-          await api("/memories", "POST", { category: cat, content: text, visibility: share ? "shareable" : "private" });
-          setText("");
-          await load();
-        }, "Your agent learned something new about you.");
-      }}
-    >
-      <div className="cat-pills" role="radiogroup" aria-label="Trait category">
-        {CATEGORIES.map((x) => (
-          <button
-            type="button"
-            key={x.id}
-            role="radio"
-            aria-checked={cat === x.id}
-            className={(cat === x.id ? "on " : "") + (insights?.coverage[x.id] ? "has" : "")}
-            onClick={() => setCat(x.id)}
-          >
-            {x.icon} {x.label}
-          </button>
+    <section className="quickq glass card" aria-live="polite">
+      <div className="quickq-top">
+        <span className="eyebrow">Question {at + 1} of {QUICK_QUESTIONS.length} · {done} answered</span>
+        <span>
+          <button className="icon-btn" aria-label="Previous question" onClick={() => go(at - 1)}><ChevronLeft size={16} /></button>
+          <button className="icon-btn" aria-label="Next question" onClick={() => go(at + 1)}><ChevronRight size={16} /></button>
+        </span>
+      </div>
+      <h3>{q.ask}</h3>
+      {current && <p className="fine">Your answer: “{current.content}” Tap another to change it.</p>}
+      <div className="w-chips big four">
+        {q.options.map((o) => (
+          <button key={o} type="button" disabled={busy} className={(o === "Other" ? other !== null : current?.content === sentence(q, o)) ? "on" : ""}
+            onClick={() => (o === "Other" ? setOther("") : save(o))}>{o}</button>
         ))}
       </div>
-      <label className="sr" htmlFor="trait-text">
-        {c.hint}
-      </label>
-      <textarea
-        id="trait-text"
-        placeholder={c.hint + "…"}
-        value={text}
-        minLength={3}
-        maxLength={600}
-        required
-        onChange={(e) => setText(e.target.value)}
-      />
-      <div className="starters">
-        {PROMPTS[cat].map((p) => (
-          <button type="button" key={p} onClick={() => setText(p + " ")}>
-            {p}
-          </button>
-        ))}
-      </div>
-      <div className="add-foot">
-        <label className="switch">
-          <input type="checkbox" checked={share} onChange={(e) => setShare(e.target.checked)} />
-          <i />
-          <span>{share ? "My agent may share this on dates" : "Private: only helps my agent know me"}</span>
-        </label>
-        <button className="btn primary" disabled={busy || text.trim().length < 3}>
-          <Plus size={16} /> Teach my agent
-        </button>
-      </div>
-    </form>
-  );
-}
-
-/* Tap-to-add answers for each chat question, in the same order as the agent asks them. */
-const QUICK: string[][] = [
-  ["I work in tech", "I'm a student", "I run my own thing", "I'm from Delhi", "I'm from Dubai", "Career-driven but family comes first"],
-  ["Movies & anime", "Exploring cafés", "Casual dining", "Travel", "Weekend getaways", "Music", "Reading", "Fitness", "Gaming", "Cooking"],
-  ["A cozy movie night in", "Trying a new café", "A quick getaway", "Out with friends", "Sleeping in and recharging", "Something outdoors"],
-  ["Good sense of humour", "Active listener", "Open communicator", "Direct and candid", "Calm under pressure", "Independent", "Warm and caring"],
-  ["More of a texter", "More of a caller", "I love voice notes", "Banter and memes", "Deep late-night chats", "I'd rather meet in person"],
-  ["Something serious", "Long-term, marriage in mind", "Seeing where it goes", "Still figuring it out"],
-  ["Prefer a non-drinker", "Social drinking is fine", "Non-smoker, please", "Smoking doesn't bother me", "Values family time", "Doesn't matter much"],
-];
-
-function Interview() {
-  const { messages, perform, load, notify, busy } = useStore();
-  const [draft, setDraft] = useState("");
-  const [sending, setSending] = useState("");
-  const end = useRef<HTMLDivElement>(null);
-  useEffect(() => end.current?.scrollIntoView({ behavior: "smooth", block: "nearest" }), [messages.length, sending]);
-  return (
-    <div className="interview">
-      <div className="chat">
-        {messages.map((m, i) => (
-          <div key={m.id ?? i} className={"bubble " + m.role}>
-            {m.content}
-          </div>
-        ))}
-        {sending && (
-          <>
-            <div className="bubble user">{sending}</div>
-            <div className="bubble assistant">
-              <Typing />
-            </div>
-          </>
-        )}
-        <div ref={end} />
-      </div>
-      {!sending && QUICK[messages.filter((m) => m.role === "user").length] && (
-        <div className="quick-replies" aria-label="Tap to add to your answer">
-          {QUICK[messages.filter((m) => m.role === "user").length].map((q) => {
-            const on = draft.split(", ").includes(q);
-            return (
-              <button key={q} type="button" className={on ? "on" : ""} aria-pressed={on} onClick={() =>
-                setDraft((d) => {
-                  const parts = d ? d.split(", ").filter(Boolean) : [];
-                  return (on ? parts.filter((x) => x !== q) : [...parts, q]).join(", ");
-                })
-              }>{q}</button>
-            );
-          })}
-        </div>
+      {other !== null && (
+        <form className="studio-other-row" onSubmit={(e) => { e.preventDefault(); if (other.trim().length >= 2) save(other); }}>
+          <input className="studio-other" type="text" autoFocus maxLength={120} placeholder="In a few words" value={other} onChange={(e) => setOther(e.target.value)} />
+          <button className="btn primary" disabled={busy || other.trim().length < 2}>Save</button>
+        </form>
       )}
-      <form
-        className="composer"
-        onSubmit={(e) => {
-          e.preventDefault();
-          if (draft.trim().length < 2) return;
-          const text = draft;
-          setSending(text);
-          setDraft("");
-          perform(async () => {
-            const r = await api("/chat", "POST", { message: text });
-            await load();
-            if (r.proposals) notify(`Your agent noticed ${r.proposals} new thing${r.proposals > 1 ? "s" : ""}. Review them in "To review".`);
-          }).then((ok) => {
-            setSending("");
-            if (!ok) setDraft(text);
-          });
-        }}
-      >
-        <textarea
-          aria-label="Your answer"
-          placeholder="Tap a few above, or just type…"
-          value={draft}
-          maxLength={2000}
-          onChange={(e) => setDraft(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter" && !e.shiftKey) {
-              e.preventDefault();
-              (e.currentTarget.form as HTMLFormElement).requestSubmit();
-            }
-          }}
-        />
-        <div className="composer-row">
-          {STATIC ? (
-            <span className="fine">Press Enter to send</span>
-          ) : (
-            <VoiceInput onTranscript={(t) => setDraft((d) => d + (d ? "\n" : "") + t)} onError={(e) => notify(e, "err")} />
-          )}
-          <button className="btn primary" disabled={busy || draft.trim().length < 2}>
-            <Send size={16} /> Send
-          </button>
-        </div>
-      </form>
-    </div>
+      <label className="switch">
+        <input type="checkbox" checked={share} onChange={(e) => setShare(e.target.checked)} />
+        <i />
+        <span>{share ? "My twin may mention this on dates" : "Private: only helps my twin know me"}</span>
+      </label>
+    </section>
   );
 }
 
 export function Agent() {
-  const { user, memories, insights, arg, openSetup } = useStore();
+  const { user, memories, arg, openSetup } = useStore();
   const approved = memories.filter((m) => m.status === "approved");
   const proposals = memories.filter((m) => m.status === "proposed");
-  const [tab, setTab] = useState(arg === "face" ? "face" : proposals.length ? "review" : "traits");
+  const [tab, setTab] = useState(arg === "face" ? "face" : proposals.length ? "review" : "questions");
   const groups = CATEGORIES.map((c) => ({ ...c, items: approved.filter((m) => m.category === c.id) })).filter(
     (g) => g.items.length,
   );
   return (
     <Panel wide>
-      <Head eyebrow="Behaviour studio" title={<>Teach your agent <em>who you are.</em></>}>
-        <button className="btn primary" onClick={() => openSetup(0)}>
-          Teach your twin
+      <Head eyebrow="Your twin" title={<>Help your twin <em>get to know you.</em></>}>
+        <button className="btn ghost" onClick={() => openSetup(0)}>
+          Redo the starter questions
         </button>
       </Head>
       <CoachCard trigger="pre_introduction" />
       <CoachCard trigger="agent" />
       <div className="studio-hero">
-        <button className="studio-wisp" onClick={() => setTab("face")} title="Change your agent's face">
+        <button className="studio-wisp" onClick={() => setTab("face")} title="Change your twin's face">
           <Wisp hue={user!.hue} size={84} self face={user!.face} seed={user!.id} />
           <span className="edit-face">
             <Camera size={13} /> Face
           </span>
         </button>
-        <Ring value={insights?.knowledge ?? 0} size={112} stroke={9} label="knows you" />
-        <div className="coverage">
-          {CATEGORIES.map((c) => {
-            const n = insights?.coverage[c.id] ?? 0;
-            return (
-              <div key={c.id} className={"cov" + (n ? " has" : "")} title={c.hint}>
-                <span>{c.icon}</span>
-                <small>{c.label}</small>
-                <b>{n}</b>
-              </div>
-            );
-          })}
-          <p className="fine">
-            The more you confirm, the more honestly your twin can represent you. Scores stay guidance. You decide who to meet.
-          </p>
-        </div>
+        <Essentials />
       </div>
 
       <div className="tabs" role="tablist">
+        <button role="tab" aria-selected={tab === "questions"} className={tab === "questions" ? "on" : ""} onClick={() => setTab("questions")}>
+          <HelpCircle size={16} /> Quick questions
+        </button>
+        <button role="tab" aria-selected={tab === "traits"} className={tab === "traits" ? "on" : ""} onClick={() => setTab("traits")}>
+          <ListChecks size={16} /> Things my twin knows <b>{approved.length}</b>
+        </button>
+        {proposals.length > 0 && (
+          <button role="tab" aria-selected={tab === "review"} className={tab === "review" ? "on" : ""} onClick={() => setTab("review")}>
+            <Inbox size={16} /> Review before sharing <b className="hot">{proposals.length}</b>
+          </button>
+        )}
         <button role="tab" aria-selected={tab === "face"} className={tab === "face" ? "on" : ""} onClick={() => setTab("face")}>
           <Smile size={16} /> Face
         </button>
-        <button role="tab" aria-selected={tab === "traits"} className={tab === "traits" ? "on" : ""} onClick={() => setTab("traits")}>
-          <ListChecks size={16} /> Traits <b>{approved.length}</b>
-        </button>
-        <button role="tab" aria-selected={tab === "chat"} className={tab === "chat" ? "on" : ""} onClick={() => setTab("chat")}>
-          <MessageCircle size={16} /> Chat
-        </button>
-        <button role="tab" aria-selected={tab === "review"} className={tab === "review" ? "on" : ""} onClick={() => setTab("review")}>
-          <Inbox size={16} /> To review {proposals.length > 0 && <b className="hot">{proposals.length}</b>}
-        </button>
       </div>
 
-      {tab === "traits" && (
-        <>
-          <AddTrait />
-          {groups.length ? (
-            groups.map((g) => (
-              <section key={g.id} className="trait-group">
-                <h4>
-                  {g.icon} {g.label}
-                </h4>
-                <div className="trait-grid">
-                  {g.items.map((m) => (
-                    <TraitCard key={m.id + m.version} m={m} />
-                  ))}
-                </div>
-              </section>
-            ))
-          ) : (
-            <Empty icon="✦" title="Your agent is a blank page">
-              <p>Add your first trait above, or let the interview draw it out of you.</p>
-            </Empty>
-          )}
-        </>
-      )}
-      {tab === "chat" && <Interview />}
+      {tab === "questions" && <QuickQuestions />}
+      {tab === "traits" &&
+        (groups.length ? (
+          groups.map((g) => (
+            <section key={g.id} className="trait-group">
+              <h4>
+                {g.icon} {g.label}
+              </h4>
+              <div className="trait-grid">
+                {g.items.map((m) => (
+                  <TraitCard key={m.id + m.version} m={m} />
+                ))}
+              </div>
+            </section>
+          ))
+        ) : (
+          <Empty icon="✦" title="Your twin doesn't know much yet">
+            <p>Answer a few quick questions. Each answer shows up here, and you can change or forget it any time.</p>
+            <button className="btn primary" onClick={() => setTab("questions")}>Answer a question</button>
+          </Empty>
+        ))}
       {tab === "face" && <FaceStudio />}
       {tab === "review" &&
         (proposals.length ? (
           <>
             <p className="fine">
-              Your agent proposed these from your interview. Nothing is used until you approve it. Edit anything that
-              doesn't sound like you.
+              Your twin noticed these. Nothing is used until you approve it, and approved things stay private unless you
+              make them shareable.
             </p>
             <div className="trait-grid">
               {proposals.map((m) => (
@@ -363,7 +229,7 @@ export function Agent() {
           </>
         ) : (
           <Empty icon={<Check />} title="All caught up">
-            <p>Proposals from your interview appear here for approval.</p>
+            <p>Nothing waiting for your review.</p>
           </Empty>
         ))}
     </Panel>

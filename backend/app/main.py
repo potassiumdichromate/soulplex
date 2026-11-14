@@ -14,7 +14,7 @@ from .db import *
 from .security import *
 from .domain import *
 from .ai import interview, moderate, contains_contact, QUESTIONS, VENUES, ProviderError
-from .studio import may_auto_join, may_start_virtual, pilot_metrics, report_counts, suspicious
+from .studio import matching_allowed, may_auto_join, may_start_virtual, pilot_metrics, report_counts, suspicious
 from .minds import (
     enabled as minds_enabled,
     bind_mind,
@@ -201,6 +201,8 @@ class NewTrait(Strict):
     ]
     content: str = Field(min_length=3, max_length=600)
     visibility: Literal["private", "twin", "shareable"] = "private"
+    # set when the fact answers one of the tap-to-answer questions: answering again replaces it
+    question_id: str | None = Field(default=None, pattern=r"^[a-z0-9_]{2,40}$")
 
 
 class FaceInput(Strict):
@@ -659,6 +661,8 @@ async def chat(body: Chat, request: Request, db: Session = Depends(get_db)):
     db.flush()
     db.add(Message(user_id=u.id, role="assistant", content=result.reply))
     for fact in result.facts:
+        if same_fact(db, u.id, fact.quote):
+            continue  # already known or already waiting for review
         db.add(
             Memory(
                 user_id=u.id,
@@ -736,6 +740,24 @@ async def edit_memory(
     return fact_data(m)
 
 
+def _norm(text):
+    import unicodedata
+
+    plain = unicodedata.normalize("NFKD", (text or "").lower()).encode("ascii", "ignore").decode()
+    return " ".join(re.sub(r"[^a-z0-9 ]+", " ", plain).split())
+
+
+def same_fact(db, user_id, content):
+    """An existing, not-rejected fact that says the same thing (case and punctuation ignored)."""
+    key = _norm(content)
+    if not key:
+        return None
+    for row in db.scalars(select(Memory).where(Memory.user_id == user_id, Memory.status != "rejected")):
+        if _norm(row.content) == key:
+            return row
+    return None
+
+
 @app.post("/api/memories")
 async def add_trait(
     body: NewTrait,
@@ -755,16 +777,30 @@ async def add_trait(
     await moderate(body.content)
     db.rollback()
     u = me(request, db, True)
-    m = Memory(
-        user_id=u.id,
-        category=body.category,
-        content=body.content.strip(),
-        source_quote=body.content.strip(),
-        source_id="owner-written",
-        status="approved",
-        visibility=body.visibility,
-    )
-    db.add(m)
+    content = body.content.strip()
+    source_id = "quick:" + body.question_id if body.question_id else "owner-written"
+    # One fact per question, and never the same sentence twice: update instead of stacking copies.
+    m = None
+    if body.question_id:
+        m = db.scalars(select(Memory).where(Memory.user_id == u.id, Memory.source_id == source_id)).first()
+    m = m or same_fact(db, u.id, content)
+    if m:
+        changed = m.content != content or m.visibility != body.visibility or m.status != "approved"
+        m.content, m.source_quote, m.visibility, m.status = content, content, body.visibility, "approved"
+        m.category = body.category
+        if changed:
+            m.version = (m.version or 1) + 1
+    else:
+        m = Memory(
+            user_id=u.id,
+            category=body.category,
+            content=content,
+            source_quote=content,
+            source_id=source_id,
+            status="approved",
+            visibility=body.visibility,
+        )
+        db.add(m)
     db.execute(
         update(User)
         .where(User.id == u.id)
@@ -816,9 +852,11 @@ def discovery_blocker(db, u):
     if not u.email_verified:
         return "Verify your email first."
     if not has_face(u):
-        return "Give your agent a face: a photo or an illustration."
+        return "Give your twin a face: a photo or an illustration."
     if not u.discovery:
-        return "Turn on discovery in Settings so agents can meet yours."
+        return "Turn on discovery in Settings so other twins can meet yours."
+    if not matching_allowed(db, u) or not may_start_virtual(db, u):
+        return "Allow matching and virtual dates in Settings first. Every permission starts off until you turn it on."
     return ""
 
 

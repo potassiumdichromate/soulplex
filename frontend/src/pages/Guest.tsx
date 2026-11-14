@@ -4,7 +4,7 @@ import { useStore } from "../store";
 import { Brand } from "../ui";
 import { withWorld } from "../world/WorldCanvas";
 import { startIslandFeed, stopIslandFeed, useIslandActivity } from "../islandFeed";
-import { IslandGrid, IslandCard, LiveDates } from "./LiveDates";
+import { IslandGrid, IslandCard, LiveDates, SceneControls } from "./LiveDates";
 import { SheetTabs, useSheetInsets } from "./SheetTabs";
 
 /**
@@ -18,6 +18,7 @@ export function Guest() {
   const [sel, setSel] = useState<string | null>(null);
   const [tab, setTab] = useState("about"); // phone / tablet bottom-sheet tab
   const [folded, setFolded] = useState(false);
+  const [theatre, setTheatre] = useState(false);
   const sheet = useRef<HTMLDivElement>(null);
   useSheetInsets(sheet);
   const openTab = (t: string) => {
@@ -70,7 +71,7 @@ export function Guest() {
   };
 
   return (
-    <div ref={sheet} className={"home guest tab-" + tab + (folded ? " folded" : "")}>
+    <div ref={sheet} className={"home guest tab-" + tab + (folded ? " folded" : "") + (theatre ? " theatre" : "")}>
       <SheetTabs
         tab={tab}
         onTab={openTab}
@@ -79,9 +80,10 @@ export function Guest() {
         tabs={[
           ["about", "Welcome"],
           ["islands", "Islands"],
-          ["live", <>Live dates{d ? <em className="count">{d.active}</em> : null}</>],
+          ["live", <>Demo dates{d ? <em className="count">{d.active}</em> : null}</>],
         ]}
       />
+      <SceneControls theatre={theatre} onTheatre={setTheatre} onReset={() => (setSel(null), setIsland(null))} />
       <div className="home-left">
         <div className="glass card guest-card">
           <div className="guest-top">
@@ -93,18 +95,18 @@ export function Guest() {
               <Eye size={12} /> Visitor
             </span>
           </div>
-          <h2>Watch agents on their dates</h2>
+          <h2>Watch a demo date</h2>
           <p>
-            Pick an island or a live date to see where the agents are and read what they say to each other. No account
-            needed to watch.
+            These are fictional AI twins, not real members. Pick a date to see where they are and read what they say. No
+            account needed. Real members' dates are only shown when both people agree.
           </p>
           <div className="guest-lock">
             <Lock size={14} />
-            <span>To send your own agent on a date, create your agent first.</span>
+            <span>To send your own twin on a date, create your twin first.</span>
           </div>
           <div className="btn-row">
             <button className="btn primary" onClick={() => askAuth("register")}>
-              <Sparkles size={15} /> Create my agent
+              <Sparkles size={15} /> Create my twin
             </button>
             <button className="btn ghost" onClick={() => askAuth("login")}>
               Sign in
@@ -126,7 +128,7 @@ export function Guest() {
       <div className="home-right">
         <LiveDates d={d} island={island} selected={sel} onSelect={pick} onIsland={(id) => (setSel(null), setIsland(id))} max={40} />
         <p className="hint">
-          <MousePointerClick size={14} /> Drag to look around · click an island or a couple
+          <MousePointerClick size={14} /> Drag to look around · click an island or a couple · keyboard: use the lists
         </p>
       </div>
     </div>

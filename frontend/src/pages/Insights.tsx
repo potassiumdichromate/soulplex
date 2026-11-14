@@ -3,7 +3,7 @@ import { Lightbulb, Eye, Sparkles, Compass, TrendingUp, Plus, Heart, ShieldCheck
 import { CATEGORIES, DIM_LABEL, VENUES } from "../api";
 import { useStore } from "../store";
 import { Panel, Head } from "./Shell";
-import { Ring, Radar, Meter, Wisp, Empty } from "../ui";
+import { Radar, Meter, Wisp, Empty } from "../ui";
 import { ExploreButton } from "./Home";
 
 export function Insights() {
@@ -15,20 +15,20 @@ export function Insights() {
   const hasDates = d.dates.length > 0;
   return (
     <Panel wide>
-      <Head eyebrow="Insights" title={<>What your agent is <em>learning.</em></>} />
+      <Head eyebrow="Insights" title={<>What your twin is <em>learning.</em></>} />
 
       <div className="kpis">
         <div className="glass kpi">
-          <Ring value={d.knowledge} size={96} stroke={8} />
+          <span className="big">{d.traits.approved}</span>
           <div>
-            <strong>Knows you</strong>
-            <small>{d.traits.approved} traits · {d.traits.shareable} shareable</small>
+            <strong>Things your twin knows</strong>
+            <small>{d.traits.shareable} you allow it to share · <button className="link" onClick={() => go("agent")}>review or correct</button></small>
           </div>
         </div>
         <div className="glass kpi">
           <span className="big">{d.average ?? "-"}{d.average != null && <small>%</small>}</span>
           <div>
-            <strong>Average resonance</strong>
+            <strong>Average connection</strong>
             <small>across {d.dates.length} date{d.dates.length === 1 ? "" : "s"}</small>
           </div>
         </div>
@@ -42,15 +42,20 @@ export function Insights() {
       </div>
 
       {!hasDates ? (
-        <Empty icon={<TrendingUp />} title="Insights grow with every date">
-          <p>Your agent reflects after each conversation. Send it out to start learning your patterns.</p>
-          <ExploreButton />
+        <Empty icon={<TrendingUp />} title="Insights start after your twin's first date">
+          <p>After each date you'll see where you may connect, what your twin learned about the other person, and one gentle thing to try.</p>
+          <p className="fine"><span className="demo-badge">Illustrative</span> “You both mentioned slow Sundays and family time.”</p>
+          <p className="fine">Spotted something your twin got wrong? You can correct or forget anything it knows.</p>
+          <div className="btn-row">
+            <ExploreButton />
+            <button className="btn ghost" onClick={() => go("agent")}>Review what my twin knows</button>
+          </div>
         </Empty>
       ) : (
         <div className="ins-grid">
           <section className="glass card">
             <h3>
-              <TrendingUp size={16} /> Where you resonate
+              <TrendingUp size={16} /> Where you may connect
             </h3>
             <Radar values={d.dimensions} />
             {d.strengths.length > 0 && (

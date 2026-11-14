@@ -1,7 +1,7 @@
 import os
 import secrets
 from sqlalchemy import select
-from .db import SessionLocal, User, Memory, Message
+from .db import ConsentRecord, SessionLocal, User, Memory, Message
 from .security import hash_password
 from .about import facts as about_facts
 from .demo_about import ABOUT
@@ -175,6 +175,9 @@ def seed():
             )
             db.add(u)
             db.flush()
+            # fictional demo members: they opted in to everything except outside processing and research
+            for purpose in ("notice_ack", "allow_matching", "allow_virtual_interactions", "allow_shareable_facts", "allow_episode_memory"):
+                db.add(ConsentRecord(user_id=u.id, purpose=purpose, granted=True))
             for category, f in facts:
                 source = Message(user_id=u.id, role="user", content=f)
                 db.add(source)

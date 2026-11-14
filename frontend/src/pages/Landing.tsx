@@ -95,7 +95,7 @@ export function Landing() {
       if (sheet === "register") {
         go("home");
         openSetup(0);
-        notify("Check your email for a verification link, then teach your agent.");
+        notify("Check your email for a verification link, then help your twin get to know you.");
       } else go("home");
     });
   };
@@ -109,7 +109,7 @@ export function Landing() {
           <a href="#learn" className="nav-extra">What it learns</a>
           <a href="#trust" className="nav-extra">Trust</a>
           <button className="link" onClick={() => setGuest(true)}>
-            Watch dates
+            Example dates
           </button>
           <button className="btn ghost sm" onClick={() => setSheet("login")}>
             Sign in
@@ -120,37 +120,41 @@ export function Landing() {
       <section className="hero">
         <div className="hero-copy">
         <span className="eyebrow">
-          <Sparkles size={14} /> Matchmaking, with an agent that learns you
+          <Sparkles size={14} /> Soulplex · Meet before you meet
         </span>
         <h1>
-          Your agent goes on the <em>first date.</em>
+          Your twin goes on the <em>first date.</em>
         </h1>
+        <p className="hero-plain">
+          An AI version of you has a short, private chat with someone else's twin. If it goes well, you both decide
+          whether to meet.
+        </p>
         <p className="lead">
-          Teach your AI twin who you really are. It meets other people's agents for coffee, learns how you'd click,
-          and only brings you the connections worth your time. Then you meet them for real.
+          Answer a few quick questions and your twin knows the basics. It only says what you approve, nothing is
+          shared without your yes, and contact details unlock only when both people accept.
         </p>
         <div className="hero-cta">
           <button className="btn primary lg" onClick={() => setSheet("register")}>
-            Create my agent <ArrowRight size={18} />
+            Create my twin <ArrowRight size={18} />
           </button>
-          <button className="btn ghost lg watch-cta" onClick={() => setGuest(true)}>
-            <Eye size={20} /> <span>Watch live dates, no sign-up</span> <ArrowRight size={18} className="end" />
+          <button className="link watch-cta-plain" onClick={() => setGuest(true)}>
+            <Eye size={16} /> Watch an example date (fictional twins, no sign-up)
           </button>
         </div>
         </div>
         <div className="hero-side" aria-hidden="true" />
         <div className="hero-stats">
           <div>
-            <strong>8</strong>
-            <span>turns per agent date</span>
+            <strong>~8</strong>
+            <span>messages in a twin date</span>
           </div>
           <div>
-            <strong>5</strong>
-            <span>resonance dimensions</span>
+            <strong>2 min</strong>
+            <span>of tap-to-answer setup</span>
           </div>
           <div>
             <strong>0</strong>
-            <span>contacts shared until both say yes</span>
+            <span>contact details shared until you both say yes</span>
           </div>
         </div>
       </section>
@@ -168,10 +172,10 @@ export function Landing() {
           <article className="glass step">
             <span className="step-n">01</span>
             <Brain />
-            <h3>Teach your agent</h3>
+            <h3>Help your twin get to know you</h3>
             <p>
-              Chat with it or add behaviour traits directly: your values, how you handle disagreement, your ideal
-              weekend. You approve everything it remembers.
+              Tap through easy four-answer questions: your weekends, what you value, how you text. You can change or
+              delete any answer, and everything starts private.
             </p>
           </article>
           <article className="glass step">
@@ -179,8 +183,8 @@ export function Landing() {
             <Coffee />
             <h3>It goes on dates</h3>
             <p>
-              Your agent walks to the café, bookshop or garden and has a real conversation with another person's
-              agent, using only what each of you chose to share.
+              Your twin walks to the café, bookshop or garden and chats with another person's twin, using only what
+              each of you chose to share.
             </p>
           </article>
           <article className="glass step">
@@ -197,17 +201,16 @@ export function Landing() {
 
       <section id="learn" className="land-section land-card split">
         <div>
-          <span className="eyebrow">Your agent learns</span>
+          <span className="eyebrow">Your twin learns</span>
           <h2>
             Every date teaches it <em>something about you, too.</em>
           </h2>
           <p className="lead">
-            After each date your agent reflects: what it learned about them, what it noticed about how you come
-            across, and one gentle thing to work on. Over time your Insights page shows your patterns: where you
-            resonate, where you clash, and how to show up better.
+            After each date your twin tells you what it learned about them, where you may connect, and one gentle
+            thing to try. You can correct anything it got wrong.
           </p>
           <ul className="ticks">
-            <li>Resonance across values, lifestyle, communication, future and interests</li>
+            <li>Where you may connect: values, lifestyle, conversation, plans and interests</li>
             <li>Private reflections that only you see</li>
             <li>Growth tips grounded in what you actually shared</li>
           </ul>
@@ -232,7 +235,7 @@ export function Landing() {
             </div>
           </div>
           <p className="mock-tip">
-            <Sparkles size={14} /> <b>Growth:</b> your agent couldn't speak about your next few years. Sharing your
+            <Sparkles size={14} /> <b>Example:</b> your twin couldn't speak about your next few years. Sharing your
             intentions saves both of you time.
           </p>
         </div>
@@ -242,28 +245,28 @@ export function Landing() {
         <div className="trust-head">
           <span className="eyebrow">Trust by design</span>
           <h2>
-            Your agent is your identity here, <em>so you stay in control.</em>
+            Your twin represents what you approve, <em>so you stay in control.</em>
           </h2>
         </div>
         <div className="lp-steps trust-cards">
           <article className="glass step">
             <Eye />
             <h3>You approve its memory</h3>
-            <p>Nothing the AI proposes is used until you approve it. Mark each trait private or shareable.</p>
+            <p>Nothing the AI proposes is used until you approve it. Everything starts private; you choose what may be shared.</p>
           </article>
           <article className="glass step">
             <Lock />
             <h3>No contact until mutual yes</h3>
-            <p>Agents cannot exchange contact details. Yours is revealed only after both people accept.</p>
+            <p>Twins cannot exchange contact details. Yours is revealed only after both people accept.</p>
           </article>
           <article className="glass step">
             <ShieldCheck />
-            <h3>Verified, adults only</h3>
-            <p>Discovery opens after verification. Block, report, export or delete your data any time.</p>
+            <h3>For adults, with email verification</h3>
+            <p>Members confirm they are 18+ and verify their email before dating. Block, report, export or delete your data any time.</p>
           </article>
         </div>
         <button className="btn primary lg trust-cta" onClick={() => setSheet("register")}>
-          Create my agent <ArrowRight size={18} />
+          Create my twin <ArrowRight size={18} />
         </button>
         <footer className="land-foot">
           <Brand small />
@@ -279,7 +282,7 @@ export function Landing() {
             </button>
             <Brand small />
             <h2>
-              {sheet === "login" ? "Welcome back." : sheet === "reset" ? "Reset your password." : "Create your agent."}
+              {sheet === "login" ? "Welcome back." : sheet === "reset" ? "Reset your password." : "Create your twin."}
             </h2>
             {sheet !== "reset" && (
               <div className="seg">
@@ -346,8 +349,8 @@ export function Landing() {
                   onChange={(e) => setF({ ...f, consent: e.target.checked })}
                 />
                 <span>
-                  I am 18 or older. I agree to storing my profile, chat and approved memory to provide this service. Text is
-                  processed by the configured AI provider.
+                  I am 18 or older and agree to Soulplex storing my profile and the answers I approve to run the service.
+                  Matching, virtual dates, sharing and research are separate choices that all start off.
                 </span>
               </label>
             )}
@@ -360,7 +363,7 @@ export function Landing() {
                     ? resetToken
                       ? "Save new password"
                       : "Send reset link"
-                    : "Create my agent"}
+                    : "Create my twin"}
               <ArrowRight size={16} />
             </button>
             {sheet === "login" && (

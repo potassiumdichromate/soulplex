@@ -148,6 +148,8 @@ function DateList() {
   const [sort, setSort] = useState("new");
   const [q, setQ] = useState("");
   const [page, setPage] = useState<Page | null>(null);
+  const [failed, setFailed] = useState(false);
+  const [retry, setRetry] = useState(0);
   const [items, setItems] = useState<Experience[]>([]);
   const [loadingMore, setLoadingMore] = useState(false);
   const PAGE = 20;
@@ -163,11 +165,12 @@ function DateList() {
         .then((p) => {
           setPage(p);
           setItems(p.items);
+          setFailed(false);
         })
-        .catch(() => {});
+        .catch(() => setFailed(true));
     }, 200);
     return () => clearTimeout(t);
-  }, [q, status, type, sort, signature]);
+  }, [q, status, type, sort, signature, retry]);
 
   const counts = {
     live: scenes.filter((s) => s.status === "running" || s.status === "queued").length,
@@ -178,15 +181,15 @@ function DateList() {
 
   return (
     <Panel wide>
-      <Head eyebrow="Agent dates" title={<>Where your agent <em>has been.</em></>}>
+      <Head eyebrow="Twin dates" title={<>Where your twin <em>has been.</em></>}>
         <ExploreButton />
       </Head>
       <div className="seg dview">
         <button className={view === "mine" ? "on" : ""} onClick={() => setView("mine")}>
-          My agent's dates
+          My twin's dates
         </button>
         <button className={view === "live" ? "on" : ""} onClick={() => setView("live")}>
-          <span className="live on" /> Live on the islands{island ? ` · ${island.active}` : ""}
+          <span className="demo-badge">Demo</span> Watch demo dates{island ? ` · ${island.active}` : ""}
         </button>
       </div>
       {view === "live" ? (
@@ -231,7 +234,7 @@ function DateList() {
         </select>
         <select id="dates-sort" aria-label="Sort" value={sort} onChange={(e) => setSort(e.target.value)}>
           <option value="new">Newest first</option>
-          <option value="score">Best resonance</option>
+          <option value="score">Best connection</option>
         </select>
       </div>
       <CoachCard trigger="pre_introduction" />
@@ -244,11 +247,27 @@ function DateList() {
         ))}
       </div>
 
-      {!page ? (
-        <p className="fine">Loading dates…</p>
+      {failed && !page ? (
+        <Empty icon={<Coffee />} title="Couldn't load your dates">
+          <p>Check your connection and try again. Nothing was lost.</p>
+          <button className="btn primary" onClick={() => setRetry((n) => n + 1)}>Try again</button>
+        </Empty>
+      ) : !page ? (
+        <div className="skeleton-list" role="status" aria-label="Loading your dates">
+          <i /><i /><i />
+        </div>
       ) : !items.length ? (
-        <Empty icon={<Coffee />} title={status || type || q ? "No dates match" : "No dates yet"}>
-          <p>{status || type || q ? "Try another filter." : "Send your agent out and it will come back with conversations to replay."}</p>
+        <Empty icon={<Coffee />} title={status || type || q ? "No dates match" : status === "invited" ? "No invitations right now" : "No dates yet"}>
+          <p>
+            {status || type || q
+              ? "Try another filter, or clear the search."
+              : "Your twin hasn't been on a date yet. When you let it explore, it picks people who fit both ways and comes back with a conversation you can replay."}
+          </p>
+          {status || type || q ? (
+            <button className="btn ghost" onClick={() => { setStatus(""); setType(""); setQ(""); }}>Clear filters</button>
+          ) : (
+            <ExploreButton />
+          )}
         </Empty>
       ) : (
         <>

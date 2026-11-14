@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ArrowLeft, ChevronRight, Eye, Lock, MapPin } from "lucide-react";
+import { ArrowLeft, ChevronRight, Eye, Lock, MapPin, RotateCcw, PanelLeftClose, PanelLeftOpen } from "lucide-react";
 import { api, VENUES, MODE_LABEL, type IslandActivity, type LiveDate, type PublicDate } from "../api";
 import { Typing } from "../ui";
 import { useStore } from "../store";
@@ -191,9 +191,11 @@ export function LiveDates({
     <div className="glass card live-dates">
       <div className="feed-head">
         <h3>
-          <span className="live on" /> Live on the islands
+          {d.simulated ? "Watch demo dates" : "Public dates"}
         </h3>
-        {d.simulated && <span className="tag" title="Other people's dates in this demo are simulated">Simulated</span>}
+        <span className="tag" title={d.simulated ? "Fictional twins in a staged demo. No real member is shown." : "Shown only when both people agreed to public viewing."}>
+          {d.simulated ? "Fictional demo" : "Both people agreed"}
+        </span>
       </div>
       <div className="island-kpis">
         <div>
@@ -202,7 +204,7 @@ export function LiveDates({
         </div>
         <div>
           <b>{d.agents.toLocaleString()}</b>
-          <small>agents around</small>
+          <small>twins around</small>
         </div>
         <div>
           <b>
@@ -217,7 +219,7 @@ export function LiveDates({
           {VENUES[island].icon} {VENUES[island].island} <span aria-hidden>×</span>
         </button>
       )}
-      {!list.length && <p className="fine">{island ? "No dates on this island right now. Its spots are free." : "It's quiet on the islands right now."}</p>}
+      {!list.length && <p className="fine">{island ? "No dates on this island right now. Its spots are free." : "No dates to watch right now. Example dates appear here as soon as one starts."}</p>}
       <div className="live-list">
         {list.slice(0, max).map((l) => {
           const t = VENUES[l.type];
@@ -232,7 +234,7 @@ export function LiveDates({
                 <span className="live-text">
                   <strong>
                     {l.a.name} &amp; {l.b.name}
-                    {l.mine && <em className="you"> · your agent</em>}
+                    {l.mine ? <em className="you"> · your twin</em> : l.ambient || d.simulated ? <em className="demo-badge">Demo</em> : l.public ? <em className="public-badge">Public</em> : null}
                   </strong>
                   <small>
                     {t.icon} {l.spot == null ? `${t.island} · waiting for a free spot` : placeOf(l.type, l.spot)}
@@ -260,7 +262,7 @@ export function LiveDates({
                     <p className="fine">
                       <Lock size={12} />{" "}
                       {l.mine
-                        ? "Everyone else on the island steps aside so you can watch your agent. Open the full review to read the conversation."
+                        ? "Everyone else on the island steps aside so you can watch your twin. Open the full review to read the conversation."
                         : `Only ${l.a.name} and ${l.b.name} are shown on ${t.island} now. They keep their conversation private.`}
                     </p>
                   )}
@@ -281,6 +283,20 @@ export function LiveDates({
         })}
       </div>
       <p className="fine">Tap a date to fly to its spot and read the agents talking. Each place hosts at most 2-3 dates, and only two are drawn at once.</p>
+    </div>
+  );
+}
+
+/** Reset the camera and hide the panels to just watch (theatre mode). */
+export function SceneControls({ theatre, onTheatre, onReset }: { theatre: boolean; onTheatre: (v: boolean) => void; onReset: () => void }) {
+  return (
+    <div className="scene-controls" role="toolbar" aria-label="Scene controls">
+      <button className="btn ghost sm" onClick={onReset} title="Back to the whole archipelago">
+        <RotateCcw size={14} /> Reset view
+      </button>
+      <button className="btn ghost sm" onClick={() => onTheatre(!theatre)} aria-pressed={theatre}>
+        {theatre ? <PanelLeftOpen size={14} /> : <PanelLeftClose size={14} />} {theatre ? "Show panels" : "Hide panels"}
+      </button>
     </div>
   );
 }
